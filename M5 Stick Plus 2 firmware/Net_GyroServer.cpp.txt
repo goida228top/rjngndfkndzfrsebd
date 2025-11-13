@@ -73,27 +73,32 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- CORRECTED AXIS & ROTATION LOGIC ---
-                // Pitch (tilting forward/backward) rotates around the X-axis.
+                // --- INDEPENDENT AXIS ROTATION LOGIC (QUATERNION) ---
+                // This approach avoids gimbal lock, where one rotation affects another.
+                
+                // Calculate pitch and roll angles from accelerometer data.
+                // Pitch (tilting forward/backward) based on Y-axis acceleration.
                 const rotX = Math.asin(Math.max(-1, Math.min(1, data.ay)));
-
-                // Roll (tilting left/right) rotates around the Z-axis.
+                // Roll (tilting left/right) based on X-axis acceleration.
                 const rotZ = Math.asin(Math.max(-1, Math.min(1, data.ax)));
-                
-                // To prevent "twisting" (gimbal lock), we change the order of rotation.
-                // 'ZXY' applies Roll (Z) first, then Pitch (X). This makes the two
-                // movements feel independent, which is what the user wants.
-                const euler = new THREE.Euler(rotX, 0, rotZ, 'ZXY');
-                const targetQuaternion = new THREE.Quaternion().setFromEuler(euler);
-                
-                // Use a slightly faster interpolation for better responsiveness.
-                box.quaternion.slerp(targetQuaternion, 0.3); 
+
+                // Create separate quaternions for pitch and roll around WORLD axes.
+                const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotX);
+                const rollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rotZ);
+
+                // Combine them. The order of multiplication is crucial.
+                // q_total = q_roll * q_pitch applies the pitch first, then the roll.
+                // This correctly applies the side-to-side tilt relative to the forward tilt.
+                const targetQuaternion = new THREE.Quaternion().multiplyQuaternions(rollQuat, pitchQuat);
+
+                // Slerp (spherical linear interpolation) to the target for smooth animation.
+                box.quaternion.slerp(targetQuaternion, 0.3);
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
                 document.getElementById('info').innerText = "Connection Error - Check Console";
             }
-            // Fetch data more frequently for a smoother, more responsive animation.
+            // Fetch data frequently for a smoother, more responsive animation.
             setTimeout(fetchData, 30); // ~33 times per second
         }
 
