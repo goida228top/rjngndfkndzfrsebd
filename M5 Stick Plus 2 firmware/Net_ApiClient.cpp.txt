@@ -4,6 +4,7 @@
 #include "UI.h"
 #include "Networking.h" // For SERVER_ADDRESS
 #include <HTTPClient.h>
+#include <WiFi.h>
 
 
 // --- ПРОВЕРКА СООБЩЕНИЙ (УЛУЧШЕННАЯ ЛОГИКА) ---

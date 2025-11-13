@@ -4,6 +4,7 @@
 #include "UI.h"
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <WiFi.h>
 
 
 // --- WEB SERVER & DNS ---
