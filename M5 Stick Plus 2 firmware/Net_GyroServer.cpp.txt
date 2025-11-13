@@ -73,19 +73,19 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- NEW INTUITIVE ROTATION LOGIC ---
+                // --- CORRECTED AXIS MAPPING ---
                 // Pitch (tilting device forward/backward) rotates the model around its X-axis.
-                // This corresponds to the IMU's X-axis acceleration data. We negate it for correct visual direction.
-                const rotX = Math.asin(Math.max(-1, Math.min(1, -data.ax)));
+                // This is now correctly mapped to the IMU's Y-axis accelerometer data ('ay').
+                const rotX = Math.asin(Math.max(-1, Math.min(1, -data.ay)));
 
                 // Roll (tilting device left/right) rotates the model around its Z-axis.
-                // This corresponds to the IMU's Y-axis acceleration data. We negate it for correct visual direction.
-                const rotZ = Math.asin(Math.max(-1, Math.min(1, -data.ay)));
+                // This is now correctly mapped to the IMU's X-axis accelerometer data ('ax').
+                const rotZ = Math.asin(Math.max(-1, Math.min(1, -data.ax)));
                 
                 // Apply rotation using a Quaternion for smooth interpolation and to avoid gimbal lock.
                 // Yaw (Y-axis rotation) is kept at 0.
                 const targetQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, 0, rotZ, 'XYZ'));
-                box.quaternion.slerp(targetQuaternion, 0.2); // Use a more responsive slerp factor
+                box.quaternion.slerp(targetQuaternion, 0.2); // Use a responsive slerp factor
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
