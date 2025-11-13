@@ -16,14 +16,22 @@ const char* GYRO_HTML = R"rawliteral(
         canvas { display: block; }
         #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; }
     </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+            "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
     <div id="info">M5-Nexus IMU Visualization</div>
 
     <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js';
-        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/controls/OrbitControls.js';
-        import Stats from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/libs/stats.module.js';
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import Stats from 'three/examples/jsm/libs/stats.module.js';
 
         let scene, camera, renderer, box, controls, stats;
         let isUserControlling = false;
