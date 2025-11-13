@@ -77,7 +77,8 @@ const char* GYRO_HTML = R"rawliteral(
                 // This approach is more robust as it prevents unintended spinning.
 
                 // 1. Get the normalized gravity vector from the IMU data.
-                const gravity = new THREE.Vector3(data.ax, data.ay, data.az).normalize();
+                //    The 'ay' component is negated to mirror the pitch (forward/backward) rotation.
+                const gravity = new THREE.Vector3(data.ax, -data.ay, data.az).normalize();
 
                 // 2. The model's Z-axis (screen face) should point opposite to gravity.
                 const modelZ = gravity.clone().negate();
