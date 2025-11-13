@@ -1,7 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const App = () => {
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+
+  const projects = [
+    {
+      id: 'firmware_stick_plus_2',
+      name: 'M5 Stick Plus 2 Firmware',
+      description: 'Walkie-Talkie & Gemini Assistant',
+      icon: '🎛️',
+      files: [ 'main.ino.txt', 'Networking.cpp.txt', 'Networking.h.txt', 'Types.h.txt', 'UI.cpp.txt', 'UI.h.txt', 'Attacks.cpp.txt', 'Attacks.h.txt', 'Gesture.cpp.txt', 'Gesture.h.txt', 'Globals.cpp.txt', 'Globals.h.txt', 'InputHandler.cpp.txt', 'InputHandler.h.txt', 'Net_ApiClient.cpp.txt', 'Net_ApiClient.h.txt', 'Net_ConfigPortal.cpp.txt', 'Net_ConfigPortal.h.txt', 'Net_Diagnostics.cpp.txt', 'Net_Diagnostics.h.txt', 'Net_GyroServer.cpp.txt', 'Net_GyroServer.h.txt', 'Net_WiFiManager.cpp.txt', 'Net_WiFiManager.h.txt', 'Recording.cpp.txt', 'Recording.h.txt', 'UI_MenuDefs.h.txt', 'WavHelper.cpp.txt', 'WavHelper.h.txt' ]
+    },
+    {
+      id: 't_dongle_s3',
+      name: 'T-Dongle S3 Firmware',
+      description: 'Wi-Fi Toolkit & SD Card Manager',
+      icon: '📡',
+      files: [ 'main.ino.txt', 'Hardware.cpp.txt', 'Hardware.h.txt', 'Networking.cpp.txt', 'Networking.h.txt', 'Types.h.txt', 'UI.cpp.txt', 'UI.h.txt', 'Attacks.cpp.txt', 'Attacks.h.txt' ]
+    },
+    {
+        id: 'server_bot',
+        name: 'Python Server Bot',
+        description: 'Flask/Telegram backend for M5Stick',
+        icon: '🤖',
+        files: ['bot.py.txt']
+    },
+    {
+      id: 'firmware_camera',
+      name: 'Camera Firmware',
+      description: 'Coming Soon',
+      icon: '📷',
+      files: [],
+      disabled: true
+    },
+  ];
+
+  const getFileIcon = (filename: string) => {
+    if (filename.endsWith('.ino.txt')) return '💡';
+    if (filename.endsWith('.h.txt')) return '📦';
+    if (filename.endsWith('.cpp.txt')) return '⚙️';
+    if (filename.endsWith('.py.txt')) return '🐍';
+    return '📄';
+  };
+
   const styles: { [key: string]: React.CSSProperties } = {
     body: {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
@@ -27,6 +69,9 @@ const App = () => {
       borderBottom: '1px solid #333',
       paddingBottom: '1rem',
       marginBottom: '1.5rem',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
     },
     title: {
       margin: 0,
@@ -38,12 +83,12 @@ const App = () => {
       color: '#808080',
       fontWeight: 'normal',
     },
-    folderList: {
+    list: {
       listStyle: 'none',
       padding: 0,
       margin: 0,
     },
-    folderItem: {
+    listItem: {
       display: 'flex',
       alignItems: 'center',
       padding: '1rem',
@@ -51,64 +96,127 @@ const App = () => {
       borderRadius: '6px',
       marginBottom: '1rem',
       transition: 'background-color 0.2s ease',
+      cursor: 'pointer',
     },
-    folderIcon: {
+     listItemDisabled: {
+      display: 'flex',
+      alignItems: 'center',
+      padding: '1rem',
+      backgroundColor: '#333',
+      borderRadius: '6px',
+      marginBottom: '1rem',
+      opacity: 0.5,
+      cursor: 'not-allowed',
+    },
+    itemIcon: {
       fontSize: '1.5rem',
       marginRight: '1rem',
     },
-    folderInfo: {
+    itemInfo: {
       display: 'flex',
       flexDirection: 'column',
     },
-    folderName: {
+    itemName: {
       fontSize: '1.2rem',
       fontWeight: 'bold',
       color: '#d4d4d4',
     },
-    folderDescription: {
+    itemDescription: {
       color: '#808080',
     },
+     backButton: {
+        background: 'none',
+        border: '1px solid #569cd6',
+        color: '#569cd6',
+        padding: '0.5rem 1rem',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        fontSize: '1rem',
+        transition: 'background-color 0.2s ease',
+    }
   };
 
-  const folders = [
-    {
-      name: 'firmware_stick_plus_2',
-      description: 'Firmware for M5StickCPlus2 (Walkie-Talkie & Gemini)',
-      icon: '🎛️',
-    },
-    {
-      name: 'firmware_camera',
-      description: 'Firmware for camera device (Coming Soon)',
-      icon: '📷',
-    },
-  ];
-
-  // A simple hover effect using JS for environments without CSS pseudo-classes
   const handleMouseOver = (e: React.MouseEvent<HTMLLIElement>) => {
     e.currentTarget.style.backgroundColor = '#444';
   };
   const handleMouseOut = (e: React.MouseEvent<HTMLLIElement>) => {
     e.currentTarget.style.backgroundColor = '#333';
   };
+   const handleButtonMouseOver = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = 'rgba(86, 156, 214, 0.2)';
+  };
+  const handleButtonMouseOut = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = 'transparent';
+  };
 
-
-  return (
-    <div style={styles.container}>
+  const renderFolderList = () => (
+    <>
       <header style={styles.header}>
-        <h1 style={styles.title}>M5-Nexus Project Hub</h1>
-        <h2 style={styles.subtitle}>Select a firmware project to view its files.</h2>
+        <div>
+            <h1 style={styles.title}>M5-Nexus Project Hub</h1>
+            <h2 style={styles.subtitle}>Select a project to view its files.</h2>
+        </div>
       </header>
-      <ul style={styles.folderList}>
-        {folders.map((folder, index) => (
-          <li key={index} style={styles.folderItem} onMouseOver={handleMouseOver} onMouseOut={handleMouseOut}>
-            <span style={styles.folderIcon}>{folder.icon}</span>
-            <div style={styles.folderInfo}>
-              <span style={styles.folderName}>{folder.name}</span>
-              <span style={styles.folderDescription}>{folder.description}</span>
+      <ul style={styles.list}>
+        {projects.map((project) => (
+          <li 
+            key={project.id} 
+            style={project.disabled ? styles.listItemDisabled : styles.listItem} 
+            onMouseOver={!project.disabled ? handleMouseOver : undefined} 
+            onMouseOut={!project.disabled ? handleMouseOut : undefined}
+            onClick={() => !project.disabled && setSelectedProject(project.id)}
+            aria-disabled={project.disabled}
+            role="button"
+            tabIndex={project.disabled ? -1 : 0}
+          >
+            <span style={styles.itemIcon}>{project.icon}</span>
+            <div style={styles.itemInfo}>
+              <span style={styles.itemName}>{project.name}</span>
+              <span style={styles.itemDescription}>{project.description}</span>
             </div>
           </li>
         ))}
       </ul>
+    </>
+  );
+
+  const renderFileList = () => {
+    const project = projects.find(p => p.id === selectedProject);
+    if (!project) return null;
+
+    return (
+        <>
+            <header style={styles.header}>
+                <div>
+                    <h1 style={styles.title}>{project.name}</h1>
+                    <h2 style={styles.subtitle}>{project.files.length} files</h2>
+                </div>
+                <button 
+                    style={styles.backButton} 
+                    onClick={() => setSelectedProject(null)}
+                    onMouseOver={handleButtonMouseOver}
+                    onMouseOut={handleButtonMouseOut}
+                >
+                    &larr; Back
+                </button>
+            </header>
+            <ul style={styles.list}>
+                {project.files.sort().map((file, index) => (
+                <li key={index} style={{...styles.listItem, cursor: 'default'}}>
+                    <span style={styles.itemIcon}>{getFileIcon(file)}</span>
+                    <div style={styles.itemInfo}>
+                        <span style={{...styles.itemName, fontSize: '1rem', fontWeight: 'normal'}}>{file.replace(/.txt$/, '')}</span>
+                    </div>
+                </li>
+                ))}
+            </ul>
+        </>
+    );
+  };
+
+  return (
+    <div style={styles.container}>
+      {selectedProject ? renderFileList() : renderFolderList()}
     </div>
   );
 };

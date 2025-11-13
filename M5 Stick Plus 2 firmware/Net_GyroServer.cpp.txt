@@ -73,27 +73,28 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- CORRECTED AXIS MAPPING ---
-                // Pitch (tilting device forward/backward) rotates the model around its X-axis.
-                // This is now correctly mapped to the IMU's Y-axis accelerometer data ('ay').
-                // The sign is inverted to match the physical movement (tilt towards you -> model tilts towards you).
+                // --- CORRECTED AXIS & ROTATION LOGIC ---
+                // Pitch (tilting forward/backward) rotates around the X-axis.
                 const rotX = Math.asin(Math.max(-1, Math.min(1, data.ay)));
 
-                // Roll (tilting device left/right) rotates the model around its Z-axis.
-                // This is now correctly mapped to the IMU's X-axis accelerometer data ('ax').
-                const rotZ = Math.asin(Math.max(-1, Math.min(1, -data.ax)));
+                // Roll (tilting left/right) rotates around the Z-axis.
+                const rotZ = Math.asin(Math.max(-1, Math.min(1, data.ax)));
                 
-                // Apply rotation using a Quaternion for smooth interpolation and to avoid gimbal lock.
-                // Yaw (Y-axis rotation) is kept at 0.
-                const targetQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, 0, rotZ, 'XYZ'));
-                box.quaternion.slerp(targetQuaternion, 0.2); // Use a responsive slerp factor
+                // To prevent "twisting" (gimbal lock), we change the order of rotation.
+                // 'ZXY' applies Roll (Z) first, then Pitch (X). This makes the two
+                // movements feel independent, which is what the user wants.
+                const euler = new THREE.Euler(rotX, 0, rotZ, 'ZXY');
+                const targetQuaternion = new THREE.Quaternion().setFromEuler(euler);
+                
+                // Use a slightly faster interpolation for better responsiveness.
+                box.quaternion.slerp(targetQuaternion, 0.3); 
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
                 document.getElementById('info').innerText = "Connection Error - Check Console";
             }
-            // Fetch data more frequently for a smoother experience
-            setTimeout(fetchData, 100);
+            // Fetch data more frequently for a smoother, more responsive animation.
+            setTimeout(fetchData, 30); // ~33 times per second
         }
 
         function animate() {
