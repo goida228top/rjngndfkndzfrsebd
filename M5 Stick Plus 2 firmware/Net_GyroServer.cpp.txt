@@ -73,23 +73,26 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- CORRECTED Rotation Logic ---
-                // Physical device pitch (forward/backward tilt) -> Model X-axis rotation
-                const rotX = Math.asin(Math.max(-1, Math.min(1, -data.ay))); // Pitch
-                // Physical device roll (left/right tilt) -> Model Z-axis rotation
-                const rotZ = Math.asin(Math.max(-1, Math.min(1, data.ax)));  // Roll
+                // --- NEW INTUITIVE ROTATION LOGIC ---
+                // Pitch (tilting device forward/backward) rotates the model around its X-axis.
+                // This corresponds to the IMU's X-axis acceleration data. We negate it for correct visual direction.
+                const rotX = Math.asin(Math.max(-1, Math.min(1, -data.ax)));
+
+                // Roll (tilting device left/right) rotates the model around its Z-axis.
+                // This corresponds to the IMU's Y-axis acceleration data. We negate it for correct visual direction.
+                const rotZ = Math.asin(Math.max(-1, Math.min(1, -data.ay)));
                 
-                // Apply rotation using a Quaternion for smooth interpolation and to avoid gimbal lock
-                // Yaw (Y-axis rotation) is set to 0.
+                // Apply rotation using a Quaternion for smooth interpolation and to avoid gimbal lock.
+                // Yaw (Y-axis rotation) is kept at 0.
                 const targetQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, 0, rotZ, 'XYZ'));
-                box.quaternion.slerp(targetQuaternion, 0.1); // slerp for smooth transition
+                box.quaternion.slerp(targetQuaternion, 0.2); // Use a more responsive slerp factor
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
                 document.getElementById('info').innerText = "Connection Error - Check Console";
             }
-            // Fetch again after a longer delay to reduce load and prevent lag
-            setTimeout(fetchData, 250);
+            // Fetch data more frequently for a smoother experience
+            setTimeout(fetchData, 100);
         }
 
         function animate() {
@@ -108,21 +111,18 @@ void handleGyroRoot() {
 }
 
 void handleGyroData() {
-    // Данные с IMU уже обновляются в главном цикле (через handleStealthClockGesture),
+    // Данные с IMU уже обновляются в главном цикле (через M5.update),
     // поэтому мы просто получаем последние доступные значения.
     // Повторный вызов M5.Imu.update() здесь приводил к конфликтам и ошибке 503.
     auto data = M5.Imu.getImuData();
     
-    // Переназначаем оси для интуитивного соответствия экрану
-    // X: наклон влево/вправо -> IMU Y
-    // Y: наклон вперед/назад -> IMU -X
-    // Z: гравитация вверх/вниз -> IMU -Z
-    float ax = data.accel.y;
-    float ay = -data.accel.x;
-    float az = -data.accel.z;
-    float gx = data.gyro.y;
-    float gy = -data.gyro.x;
-    float gz = -data.gyro.z;
+    // Отправляем "сырые" данные акселерометра. Вся логика поворота теперь на стороне клиента (JS).
+    float ax = data.accel.x;
+    float ay = data.accel.y;
+    float az = data.accel.z;
+    float gx = data.gyro.x;
+    float gy = data.gyro.y;
+    float gz = data.gyro.z;
 
     char jsonBuffer[200];
     snprintf(jsonBuffer, sizeof(jsonBuffer), 
