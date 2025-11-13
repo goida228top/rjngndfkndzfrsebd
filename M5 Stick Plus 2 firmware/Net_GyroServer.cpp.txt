@@ -73,24 +73,20 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- INDEPENDENT AXIS ROTATION LOGIC (QUATERNION) ---
-                // This approach avoids gimbal lock, where one rotation affects another.
+                // --- GRAVITY VECTOR ORIENTATION LOGIC ---
+                // This approach uses the accelerometer's gravity vector to directly orient the model,
+                // avoiding gimbal lock and providing intuitive pitch and roll.
+
+                // The reference vector for the back of the M5Stick model in its default orientation.
+                const referenceBack = new THREE.Vector3(0, 0, -1);
+
+                // The measured gravity vector from the IMU.
+                // The IMU values are in G's, so the vector is already close to unit length.
+                const gravity = new THREE.Vector3(data.ax, data.ay, data.az);
                 
-                // Calculate pitch and roll angles from accelerometer data.
-                // Pitch (tilting forward/backward) based on Y-axis acceleration.
-                const rotX = Math.asin(Math.max(-1, Math.min(1, data.ay)));
-                // Roll (tilting left/right) based on X-axis acceleration.
-                const rotZ = Math.asin(Math.max(-1, Math.min(1, data.ax)));
-
-                // Create separate quaternions for pitch and roll around WORLD axes.
-                const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotX);
-                const rollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rotZ);
-
-                // Combine them. The order of multiplication is crucial.
-                // q_total = q_roll * q_pitch applies the pitch first, then the roll.
-                // This correctly applies the side-to-side tilt relative to the forward tilt.
-                const targetQuaternion = new THREE.Quaternion().multiplyQuaternions(rollQuat, pitchQuat);
-
+                // Create a quaternion that represents the rotation from the reference vector to the gravity vector.
+                const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(referenceBack, gravity);
+                
                 // Slerp (spherical linear interpolation) to the target for smooth animation.
                 box.quaternion.slerp(targetQuaternion, 0.3);
 
