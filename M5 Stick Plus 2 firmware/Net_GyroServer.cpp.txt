@@ -38,8 +38,8 @@ const char* GYRO_HTML = R"rawliteral(
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Box (representing M5Stick)
-            const geometry = new THREE.BoxGeometry(1.2, 2.5, 0.6); // Proportions similar to M5StickC
+            // Box (representing M5Stick) - Proportions adjusted to match screen ratio (135x240)
+            const geometry = new THREE.BoxGeometry(1.35, 2.4, 0.6); 
             const material = new THREE.MeshStandardMaterial({ color: 0xfc9803, roughness: 0.5 }); // Orange color
             box = new THREE.Mesh(geometry, material);
             scene.add(box);
@@ -73,26 +73,23 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- Rotation Logic ---
-                // We use accelerometer data to determine tilt (orientation relative to gravity)
-                // The firmware maps axes for us:
-                // ay = forward/backward tilt
-                // ax = left/right tilt
-                
-                // Convert G-force component to angle in radians
+                // --- CORRECTED Rotation Logic ---
+                // Physical device pitch (forward/backward tilt) -> Model X-axis rotation
                 const rotX = Math.asin(Math.max(-1, Math.min(1, -data.ay))); // Pitch
-                const rotY = Math.asin(Math.max(-1, Math.min(1, data.ax)));  // Roll
+                // Physical device roll (left/right tilt) -> Model Z-axis rotation
+                const rotZ = Math.asin(Math.max(-1, Math.min(1, data.ax)));  // Roll
                 
                 // Apply rotation using a Quaternion for smooth interpolation and to avoid gimbal lock
-                const targetQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, rotY, 0, 'XYZ'));
+                // Yaw (Y-axis rotation) is set to 0.
+                const targetQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, 0, rotZ, 'XYZ'));
                 box.quaternion.slerp(targetQuaternion, 0.1); // slerp for smooth transition
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
                 document.getElementById('info').innerText = "Connection Error - Check Console";
             }
-            // Fetch again after a short delay
-            setTimeout(fetchData, 100);
+            // Fetch again after a longer delay to reduce load and prevent lag
+            setTimeout(fetchData, 250);
         }
 
         function animate() {
