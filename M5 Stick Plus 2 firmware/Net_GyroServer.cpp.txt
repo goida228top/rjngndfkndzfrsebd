@@ -73,22 +73,38 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                // --- GRAVITY VECTOR ORIENTATION LOGIC ---
-                // This approach uses the accelerometer's gravity vector to directly orient the model,
-                // avoiding gimbal lock and providing intuitive pitch and roll.
+                // --- ENHANCED ORIENTATION LOGIC ---
+                // This approach is more robust as it prevents unintended spinning.
 
-                // The reference vector for the back of the M5Stick model in its default orientation.
-                const referenceBack = new THREE.Vector3(0, 0, -1);
+                // 1. Get the normalized gravity vector from the IMU data.
+                const gravity = new THREE.Vector3(data.ax, data.ay, data.az).normalize();
 
-                // The measured gravity vector from the IMU.
-                // The IMU values are in G's, so the vector is already close to unit length.
-                const gravity = new THREE.Vector3(data.ax, data.ay, data.az);
+                // 2. The model's Z-axis (screen face) should point opposite to gravity.
+                const modelZ = gravity.clone().negate();
+
+                // 3. Define a stable world "up" vector to orient against.
+                const worldUp = new THREE.Vector3(0, 1, 0);
+
+                // 4. Calculate the model's X-axis (right side) by crossing world up and model forward.
+                const modelX = new THREE.Vector3().crossVectors(worldUp, modelZ).normalize();
+
+                // 5. Handle the edge case where the device is pointing straight up or down (gimbal lock).
+                //    In this case, the cross product is near zero. We need a fallback.
+                if (modelX.lengthSq() < 0.001) {
+                    // If gravity is aligned with world Y, use world X as a stable reference for "right".
+                    modelX.crossVectors(new THREE.Vector3(1, 0, 0), modelZ).normalize();
+                }
+
+                // 6. The model's Y-axis (top side) is now guaranteed to be orthogonal.
+                const modelY = new THREE.Vector3().crossVectors(modelZ, modelX);
+
+                // 7. Create the final rotation matrix from the calculated axes.
+                const rotationMatrix = new THREE.Matrix4().makeBasis(modelX, modelY, modelZ);
+                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
                 
-                // Create a quaternion that represents the rotation from the reference vector to the gravity vector.
-                const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(referenceBack, gravity);
-                
-                // Slerp (spherical linear interpolation) to the target for smooth animation.
-                box.quaternion.slerp(targetQuaternion, 0.3);
+                // 8. Slerp to the target for smooth animation. Factor reduced to 0.1 to reduce jitter.
+                box.quaternion.slerp(targetQuaternion, 0.1);
+
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
