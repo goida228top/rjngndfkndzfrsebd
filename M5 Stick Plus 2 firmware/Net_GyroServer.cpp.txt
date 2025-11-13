@@ -76,7 +76,8 @@ const char* GYRO_HTML = R"rawliteral(
                 // --- CORRECTED AXIS MAPPING ---
                 // Pitch (tilting device forward/backward) rotates the model around its X-axis.
                 // This is now correctly mapped to the IMU's Y-axis accelerometer data ('ay').
-                const rotX = Math.asin(Math.max(-1, Math.min(1, -data.ay)));
+                // The sign is inverted to match the physical movement (tilt towards you -> model tilts towards you).
+                const rotX = Math.asin(Math.max(-1, Math.min(1, data.ay)));
 
                 // Roll (tilting device left/right) rotates the model around its Z-axis.
                 // This is now correctly mapped to the IMU's X-axis accelerometer data ('ax').
