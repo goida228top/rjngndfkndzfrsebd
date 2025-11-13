@@ -111,29 +111,28 @@ void handleGyroRoot() {
 }
 
 void handleGyroData() {
-    if (M5.Imu.update()) {
-        auto data = M5.Imu.getImuData();
-        
-        // Переназначаем оси для интуитивного соответствия экрану
-        // X: наклон влево/вправо -> IMU Y
-        // Y: наклон вперед/назад -> IMU -X
-        // Z: гравитация вверх/вниз -> IMU -Z
-        float ax = data.accel.y;
-        float ay = -data.accel.x;
-        float az = -data.accel.z;
-        float gx = data.gyro.y;
-        float gy = -data.gyro.x;
-        float gz = -data.gyro.z;
+    // Данные с IMU уже обновляются в главном цикле (через handleStealthClockGesture),
+    // поэтому мы просто получаем последние доступные значения.
+    // Повторный вызов M5.Imu.update() здесь приводил к конфликтам и ошибке 503.
+    auto data = M5.Imu.getImuData();
+    
+    // Переназначаем оси для интуитивного соответствия экрану
+    // X: наклон влево/вправо -> IMU Y
+    // Y: наклон вперед/назад -> IMU -X
+    // Z: гравитация вверх/вниз -> IMU -Z
+    float ax = data.accel.y;
+    float ay = -data.accel.x;
+    float az = -data.accel.z;
+    float gx = data.gyro.y;
+    float gy = -data.gyro.x;
+    float gz = -data.gyro.z;
 
-        char jsonBuffer[200];
-        snprintf(jsonBuffer, sizeof(jsonBuffer), 
-                 "{\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f}",
-                 ax, ay, az, gx, gy, gz);
-        
-        server.send(200, "application/json", jsonBuffer);
-    } else {
-        server.send(503, "application/json", "{\"error\":\"IMU data not available\"}");
-    }
+    char jsonBuffer[200];
+    snprintf(jsonBuffer, sizeof(jsonBuffer), 
+             "{\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f}",
+             ax, ay, az, gx, gy, gz);
+    
+    server.send(200, "application/json", jsonBuffer);
 }
 
 void startGyroServer() {
