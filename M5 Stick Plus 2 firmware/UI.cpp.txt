@@ -3,6 +3,7 @@
 #include "Globals.h"
 #include "UI_MenuDefs.h"
 #include <time.h> // Для часов
+#include <WiFi.h> // Для WiFi.localIP()
 
 // --- КОНСТАНТЫ ---
 const int SCROLL_SPEED = 5;
