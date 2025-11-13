@@ -1,0 +1,31 @@
+#ifndef TYPES_H
+#define TYPES_H
+
+#include "Arduino.h"
+
+// Режимы загрузки
+#define BOOT_MODE_NORMAL 1      // Обычный режим (запуск меню)
+#define BOOT_MODE_USB_START 2   // Запрос на запуск режима USB при следующей загрузке
+#define BOOT_MODE_USB_ACTIVE 3  // Режим USB активен
+
+// Состояния экрана
+enum ScreenState {
+    STATE_MAIN_MENU,
+    STATE_WIFI_MENU,
+    STATE_WIFI_SCAN_RESULTS,
+    STATE_MESSAGE,
+    STATE_WIFI_CONNECTING,
+    STATE_USB_PREPARE,
+    STATE_ATTACK_TARGET_SELECTION,
+    STATE_ATTACK_RUNNING
+};
+
+// Структура для хранения информации о цели
+struct TargetInfo {
+    String ssid;
+    String bssid;
+    int channel;
+};
+
+
+#endif // TYPES_H

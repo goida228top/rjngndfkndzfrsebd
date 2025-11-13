@@ -1,0 +1,31 @@
+#ifndef UI_MENU_DEFS_H
+#define UI_MENU_DEFS_H
+
+// --- МЕНЮ (ОПРЕДЕЛЕНИЕ) ---
+const char* mainMenu[] = {
+    (const char*)u8"Wi-Fi", 
+    (const char*)u8"Gemini Ассистент",
+    (const char*)u8"Голосовые С",
+    (const char*)u8"Сообщения", 
+    (const char*)u8"Гироскоп",
+    (const char*)u8"Диагностика", 
+    (const char*)u8"Выключение"
+};
+const int numMainMenu = sizeof(mainMenu) / sizeof(mainMenu[0]);
+
+const char* wifiMenu[] = {
+    (const char*)u8"Setup New Network",
+    (const char*)u8"Back"
+};
+const int numWifiMenu = sizeof(wifiMenu) / sizeof(wifiMenu[0]);
+
+const char* messageMenu[] = {
+    (const char*)u8"<",
+    (const char*)u8">",
+    (const char*)u8"Выход",
+    (const char*)u8"Вопрос",
+    (const char*)u8"Заново"
+};
+const int numMessageMenu = sizeof(messageMenu) / sizeof(messageMenu[0]);
+
+#endif // UI_MENU_DEFS_H

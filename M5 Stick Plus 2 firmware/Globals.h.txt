@@ -1,0 +1,55 @@
+#ifndef GLOBALS_H
+#define GLOBALS_H
+
+#include <M5StickCPlus2.h>
+#include <Preferences.h>
+#include "Types.h"
+
+// Forward declaration
+class WebServer;
+
+// --- НАСТРОЙКИ ---
+extern const int SAMPLE_RATE;
+extern const int RECORD_BUFFER_SIZE;
+
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+
+// Состояние системы
+extern Mode menuMode;
+extern int selectedItem;
+extern bool isFirstRecording; // Флаг для инициализационной записи
+extern unsigned long stealth_clock_exit_time; // Для кулдауна жеста
+
+// Буферы записи
+extern uint8_t* rec_data;
+extern size_t recorded_bytes;
+extern uint8_t* last_rec_data;
+extern size_t last_recorded_bytes;
+
+// Состояние сообщений
+extern String receivedMessage;
+extern bool newMessageReceived;
+extern unsigned long messageTimestamp;
+extern int currentPage;
+extern int totalPages;
+
+// Состояние UI
+extern int messageMenuSelection;
+extern String diagStatusGoogle;
+extern String diagStatusServer;
+extern bool isClockDarkTheme;
+extern int clockRotation;
+
+// Пагинация
+#define MAX_PAGES 10
+extern String pages[MAX_PAGES];
+
+// Сеть
+extern Preferences preferences;
+extern WebServer server;
+
+// Функции
+void setMenuMode(Mode newMode);
+
+
+#endif // GLOBALS_H

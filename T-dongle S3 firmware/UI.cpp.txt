@@ -1,0 +1,257 @@
+#include "UI.h"
+#include "Networking.h"
+#include "Hardware.h"
+#include "WiFi.h"
+
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ИНТЕРФЕЙСА (ОПРЕДЕЛЕНИЕ) ---
+ScreenState currentScreen = STATE_MAIN_MENU;
+bool menuNeedsRedraw = true;
+String messageLine1 = "";
+String messageLine2 = "";
+unsigned long messageDisplayStartTime = 0;
+unsigned long usbPrepareStartTime = 0;
+
+int mainMenuSelection = 0;
+int wifiMenuSelection = 0;
+int wifiScanSelection = 0;
+String connectingToSsid = "";
+unsigned long wifiConnectStartTime = 0;
+
+
+// --- КОНСТАНТЫ ИНТЕРФЕЙСА ---
+#define STATUS_BAR_WIDTH 24
+#define MENU_AREA_WIDTH (gfx.width() - STATUS_BAR_WIDTH)
+#define VISIBLE_MENU_ITEMS 3
+const uint16_t C_BG = gfx.color565(40, 42, 54);
+const uint16_t C_STATUS_BG = TFT_BLACK;
+const uint16_t C_BTN_BG = gfx.color565(0, 170, 220);
+const uint16_t C_BTN_BORDER = gfx.color565(0, 120, 200);
+const uint16_t C_HIGHLIGHT_BG = gfx.color565(100, 210, 255);
+const uint16_t C_HIGHLIGHT_BORDER = TFT_WHITE;
+const uint16_t C_TEXT = TFT_WHITE;
+const uint16_t C_ICON_OK = TFT_GREEN;
+const uint16_t C_ICON_FAIL = TFT_RED;
+const uint16_t C_ACTION_CONFIRM = TFT_DARKGREEN;
+
+// --- МЕНЮ (ОПРЕДЕЛЕНИЕ) ---
+const char* mainMenuItems[] = {(const char*)u8"Вай фай", (const char*)u8"Аудит Wi-Fi", (const char*)u8"СД карта", (const char*)u8"Настройки"};
+const int MAIN_MENU_ITEM_COUNT = sizeof(mainMenuItems) / sizeof(mainMenuItems[0]);
+
+const char* wifiMenuItems[] = {(const char*)u8"Подключиться", (const char*)u8"Выйти"};
+const int WIFI_MENU_ITEM_COUNT = sizeof(wifiMenuItems) / sizeof(wifiMenuItems[0]);
+
+
+// --- ФУНКЦИИ ОТРИСОВКИ ---
+
+void drawStatusBar() {
+    gfx.fillRect(MENU_AREA_WIDTH, 0, STATUS_BAR_WIDTH, gfx.height(), C_STATUS_BG);
+    gfx.setRotation(0); gfx.setFont(&fonts::Font0); int text_y = (STATUS_BAR_WIDTH - 8) / 2;
+    gfx.setTextColor(is_sd_ok ? C_ICON_OK : C_ICON_FAIL); gfx.setCursor(15, text_y); gfx.print("SD");
+    gfx.setTextColor(WiFi.status() == WL_CONNECTED ? C_ICON_OK : C_ICON_FAIL); gfx.setCursor(40, text_y); gfx.print("WF");
+    gfx.setTextColor(C_ICON_FAIL); gfx.setCursor(65, text_y); gfx.print("BT");
+    // Вывод boot_config для отладки
+    gfx.setTextColor(TFT_WHITE); gfx.setCursor(110, text_y); gfx.printf("%d", boot_config);
+    gfx.setRotation(3);
+}
+
+void drawCarouselMenu(const std::vector<String>& items, int selection) {
+    gfx.fillRect(0, 0, MENU_AREA_WIDTH, gfx.height(), C_BG);
+    if (items.empty()) return;
+    int itemCount = items.size();
+    int buttonHeight = 40; int cornerRadius = 9; int paddingX = 8; int spacingY = 10;
+    int startY = (gfx.height() - (VISIBLE_MENU_ITEMS * buttonHeight + (VISIBLE_MENU_ITEMS - 1) * spacingY)) / 2;
+    int buttonWidth = MENU_AREA_WIDTH - (paddingX * 2);
+    int centerSlot = VISIBLE_MENU_ITEMS / 2;
+    gfx.setFont(&fonts::efontCN_12);
+    gfx.setTextColor(C_TEXT);
+    for (int i = 0; i < VISIBLE_MENU_ITEMS; i++) {
+        int itemIndex = (selection + (i - centerSlot) + itemCount) % itemCount;
+        int itemY = startY + (i * (buttonHeight + spacingY));
+        if (i == centerSlot) {
+            gfx.fillRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_HIGHLIGHT_BG);
+            gfx.drawRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_HIGHLIGHT_BORDER);
+        } else {
+            gfx.fillRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_BTN_BG);
+            gfx.drawRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_BTN_BORDER);
+        }
+        int textWidth = gfx.textWidth(items[itemIndex]);
+        int textX = paddingX + (buttonWidth - textWidth) / 2;
+        int textY = itemY + (buttonHeight - 12) / 2;
+        gfx.setCursor(textX, textY);
+        gfx.print(items[itemIndex]);
+    }
+}
+
+void drawWifiMenu() {
+    gfx.fillRect(0, 0, MENU_AREA_WIDTH, gfx.height(), C_BG);
+    int buttonHeight = 28; int cornerRadius = 7; int paddingX = 15; int spacingY = 8;
+    int buttonWidth = MENU_AREA_WIDTH - (paddingX * 2);
+    int totalHeight = (WIFI_MENU_ITEM_COUNT * buttonHeight + (WIFI_MENU_ITEM_COUNT-1) * spacingY);
+    int startY = (gfx.height() - totalHeight) / 2;
+    gfx.setFont(&fonts::efontCN_12); gfx.setTextColor(C_TEXT);
+    for(int i=0; i < WIFI_MENU_ITEM_COUNT; i++) {
+        int itemY = startY + (i * (buttonHeight + spacingY));
+        if (i == wifiMenuSelection) {
+            gfx.fillRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_HIGHLIGHT_BG);
+            gfx.drawRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_HIGHLIGHT_BORDER);
+        } else {
+            gfx.fillRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_BTN_BG);
+            gfx.drawRoundRect(paddingX, itemY, buttonWidth, buttonHeight, cornerRadius, C_BTN_BORDER);
+        }
+        int textWidth = gfx.textWidth(wifiMenuItems[i]);
+        int textX = paddingX + (buttonWidth - textWidth) / 2;
+        int textY = itemY + (buttonHeight - 12) / 2;
+        gfx.setCursor(textX, textY);
+        gfx.print(wifiMenuItems[i]);
+    }
+}
+
+void drawMessageScreen(String line1, String line2 = "") {
+    gfx.fillRect(0, 0, MENU_AREA_WIDTH, gfx.height(), C_BG);
+    gfx.setFont(&fonts::efontCN_12);
+    gfx.setTextColor(C_TEXT);
+    gfx.setTextDatum(textdatum_t::middle_center);
+    gfx.drawString(line1, MENU_AREA_WIDTH / 2, gfx.height() / 2 - (line2.isEmpty() ? 0 : 10));
+    if (!line2.isEmpty()) {
+        gfx.drawString(line2, MENU_AREA_WIDTH / 2, gfx.height() / 2 + 10);
+    }
+    gfx.setTextDatum(textdatum_t::top_left);
+}
+
+void drawWifiConnectingScreen() {
+    gfx.fillRect(0, 0, MENU_AREA_WIDTH, gfx.height(), C_BG);
+    gfx.setFont(&fonts::efontCN_12);
+    gfx.setTextColor(C_TEXT);
+    gfx.setTextDatum(textdatum_t::middle_center);
+    gfx.drawString((const char*)u8"Подключение к:", MENU_AREA_WIDTH / 2, gfx.height() / 2 - 20);
+    gfx.drawString(connectingToSsid, MENU_AREA_WIDTH / 2, gfx.height() / 2);
+    int dots = (millis() / 500) % 4;
+    String progress = "";
+    for(int i=0; i<dots; i++) progress += ".";
+    gfx.drawString(progress, MENU_AREA_WIDTH / 2, gfx.height() / 2 + 20);
+    gfx.setTextDatum(textdatum_t::top_left);
+}
+
+void drawUSBPrepareScreen() {
+    // 1. Устанавливаем черный фон и белый текст
+    gfx.fillRect(0, 0, MENU_AREA_WIDTH, gfx.height(), TFT_BLACK);
+    gfx.setTextColor(TFT_WHITE);
+    gfx.setTextDatum(textdatum_t::middle_center);
+
+    // Строка 1: Основное действие (Header)
+    gfx.setFont(&fonts::efontCN_12);
+    gfx.drawString((const char*)u8"РЕЖИМ ФЛЕШКИ", MENU_AREA_WIDTH / 2, 20);
+
+    // Строка 2: Инструкция (1/3)
+    gfx.setFont(&fonts::efontCN_10);
+    gfx.drawString((const char*)u8"ДЛЯ ОТМЕНЫ/ВЫХОДА:", MENU_AREA_WIDTH / 2, 45);
+
+    // Строка 3: Инструкция (2/3) - Зажмите кнопку BOOT (BOOT - красный)
+    gfx.setTextDatum(textdatum_t::top_left); // Переключаемся на top-left для посимвольного вывода
+    gfx.setFont(&fonts::efontCN_10);
+
+    String instructionPart1 = (const char*)u8"Зажмите кнопку ";
+    String bootWord = "BOOT";
+
+    // Вычисляем начальную позицию для центрирования
+    int textWidth = gfx.textWidth(instructionPart1) + gfx.textWidth(bootWord);
+    int startX = (MENU_AREA_WIDTH - textWidth) / 2;
+    int currentY = 65;
+
+    // "Зажмите кнопку "
+    gfx.setTextColor(TFT_WHITE);
+    gfx.setCursor(startX, currentY);
+    gfx.print(instructionPart1);
+
+    // "BOOT" - Красным (TFT_RED)
+    gfx.setTextColor(TFT_RED);
+    gfx.print(bootWord);
+
+    // Строка 4: Емкость (Capacity) - Компактно
+    String capStr;
+    float capacityFloat;
+    // Конвертация емкости в GB или MB
+    if (sdCardCapacity > 1024ULL * 1024 * 1024) {
+        capacityFloat = (float)sdCardCapacity / (1024.0f * 1024.0f * 1024.0f);
+        capStr = String(capacityFloat, 1) + " GB";
+    } else {
+        capacityFloat = (float)sdCardCapacity / (1024.0f * 1024.0f);
+        capStr = String(capacityFloat, 1) + " MB";
+    }
+
+    gfx.setTextDatum(textdatum_t::middle_center);
+    gfx.setFont(&fonts::efontCN_10); // Используем мелкий шрифт 10 для размера
+    gfx.setTextColor(TFT_WHITE);
+
+    String displayCapacity = (const char*)u8"Размер: " + capStr;
+    gfx.drawString(displayCapacity, MENU_AREA_WIDTH / 2, 95);
+
+    // Строка 5: Отсчет
+    int timeLeft = 5 - (int)((millis() - usbPrepareStartTime) / 1000);
+    if (timeLeft < 0) timeLeft = 0;
+    gfx.setFont(&fonts::efontCN_10);
+    gfx.drawString((const char*)u8"Вход через: " + String(timeLeft) + (const char*)u8" с...", MENU_AREA_WIDTH / 2, 135);
+
+    gfx.setTextDatum(textdatum_t::top_left);
+}
+
+void drawAttackScreen(const TargetInfo& ap, unsigned long packetCount) {
+    gfx.fillRect(0, 0, MENU_AREA_WIDTH, gfx.height(), TFT_RED);
+    gfx.setTextColor(TFT_WHITE);
+    gfx.setTextDatum(textdatum_t::top_center);
+    gfx.setFont(&fonts::efontCN_12);
+    
+    gfx.drawString((const char*)u8"!!! АУДИТ СЕТИ !!!", MENU_AREA_WIDTH / 2, 10);
+    
+    gfx.setTextDatum(textdatum_t::top_left);
+    gfx.setFont(&fonts::Font2);
+    gfx.setCursor(5, 40);
+    gfx.printf("Target: %s", ap.ssid.c_str());
+    
+    gfx.setCursor(5, 65);
+    gfx.printf("Packets: %lu", packetCount);
+
+    gfx.setTextDatum(textdatum_t::bottom_center);
+    gfx.setFont(&fonts::efontCN_10);
+    gfx.drawString((const char*)u8"Нажмите любую кнопку", MENU_AREA_WIDTH / 2, gfx.height() - 25);
+    gfx.drawString((const char*)u8"для остановки", MENU_AREA_WIDTH / 2, gfx.height() - 10);
+    
+    gfx.setTextDatum(textdatum_t::top_left); // Сброс
+}
+
+
+void drawScreen(){
+    switch(currentScreen) {
+    case STATE_MAIN_MENU:
+    { std::vector<String> items(mainMenuItems, mainMenuItems + MAIN_MENU_ITEM_COUNT); drawCarouselMenu(items, mainMenuSelection); }
+    break;
+    case STATE_WIFI_MENU:
+        drawWifiMenu();
+        break;
+    case STATE_WIFI_SCAN_RESULTS:
+    case STATE_ATTACK_TARGET_SELECTION:
+    {
+        std::vector<String> ssids;
+        for (const auto& net : foundNetworks) {
+            ssids.push_back(net.ssid);
+        }
+        drawCarouselMenu(ssids, wifiScanSelection);
+    }
+    break;
+    case STATE_WIFI_CONNECTING:
+        drawWifiConnectingScreen();
+        break;
+    case STATE_MESSAGE:
+        drawMessageScreen(messageLine1, messageLine2);
+        break;
+    case STATE_USB_PREPARE:
+        drawUSBPrepareScreen();
+        break;
+    case STATE_ATTACK_RUNNING:
+        if (!foundNetworks.empty() && wifiScanSelection < foundNetworks.size()) {
+            drawAttackScreen(foundNetworks[wifiScanSelection], 0);
+        }
+        break;
+    }
+    drawStatusBar();
+}

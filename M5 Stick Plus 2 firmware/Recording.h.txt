@@ -1,0 +1,8 @@
+#ifndef RECORDING_H
+#define RECORDING_H
+
+void handleVoiceRecording();
+void handleGeminiRecording();
+void handleGeminiFollowupRecording();
+
+#endif // RECORDING_H

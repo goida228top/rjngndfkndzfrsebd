@@ -1,0 +1,8 @@
+#ifndef NET_CONFIG_PORTAL_H
+#define NET_CONFIG_PORTAL_H
+
+void startConfigurationMode();
+void stopConfigurationMode();
+void handleConfigurationMode();
+
+#endif // NET_CONFIG_PORTAL_H

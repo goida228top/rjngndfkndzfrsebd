@@ -1,0 +1,6 @@
+#ifndef GESTURE_H
+#define GESTURE_H
+
+void handleStealthClockGesture();
+
+#endif // GESTURE_H

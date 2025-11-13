@@ -1,0 +1,6 @@
+#ifndef NET_DIAGNOSTICS_H
+#define NET_DIAGNOSTICS_H
+
+void runNetworkDiagnostics();
+
+#endif // NET_DIAGNOSTICS_H

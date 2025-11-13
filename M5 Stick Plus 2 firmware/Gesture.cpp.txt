@@ -1,0 +1,52 @@
+#include "Gesture.h"
+#include "Globals.h"
+#include "UI.h" // For displayMenu, resetUIState
+
+void handleStealthClockGesture() {
+    // Кулдаун 2 секунды после выхода из режима часов.
+    if (millis() - stealth_clock_exit_time < 2000) {
+        return;
+    }
+    
+    if (menuMode == MODE_STEALTH_CLOCK) return;
+
+    // --- ЛОГИКА: ЭКРАНОМ ВНИЗ > 3 СЕК ---
+    // Пороги для срабатывания жеста
+    const float FACE_DOWN_THRESHOLD_G = -0.95f; // Устройство должно лежать экраном вниз (показания < -0.95g)
+    const unsigned long GESTURE_DURATION_MS = 3000; // Жест должен длиться 3 секунды
+
+    static unsigned long gestureStartTime = 0; // Статическая переменная для отсчета времени
+
+    if (M5.Imu.update()) {
+        auto data = M5.Imu.getImuData();
+        
+        float accel_z = data.accel.z;
+
+        // Проверяем условие:
+        bool isFaceDown = (accel_z < FACE_DOWN_THRESHOLD_G);
+
+        if (isFaceDown) {
+            // Условие выполняется. Начинаем или продолжаем отсчет.
+            if (gestureStartTime == 0) {
+                // Жест только что начался. Запоминаем время старта.
+                gestureStartTime = millis();
+            } else {
+                // Таймер уже идет. Проверяем, прошло ли 3 секунды.
+                if (millis() - gestureStartTime >= GESTURE_DURATION_MS) {
+                    // Условие выполнялось 3 секунды. Активируем часы.
+                    Serial.println("Stealth clock gesture (face down > 3s) detected! Activating...");
+                    
+                    resetUIState();
+                    setMenuMode(MODE_STEALTH_CLOCK);
+                    displayMenu();
+                    
+                    // Сбрасываем таймер, чтобы жест не сработал снова сразу же
+                    gestureStartTime = 0; 
+                }
+            }
+        } else {
+            // Условие не выполнено. Сбрасываем таймер.
+            gestureStartTime = 0;
+        }
+    }
+}

@@ -1,0 +1,169 @@
+#include "Arduino.h"
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
+#include <SPI.h>
+#include "esp_sleep.h"
+#include "WiFi.h"
+
+#include "Types.h"
+#include "UI.h"
+#include "Hardware.h"
+#include "Networking.h"
+#include "Attacks.h"
+
+// --- LovyanGFX КОНФИГУРАЦИЯ ---
+class LGFX : public lgfx::LGFX_Device {
+public:
+lgfx::Panel_ST7735S _panel_instance; lgfx::Bus_SPI _bus_instance; lgfx::Light_PWM _light_instance;
+LGFX(void) {
+{auto cfg=_bus_instance.config(); cfg.spi_host=SPI2_HOST; cfg.spi_mode=0; cfg.freq_write=40000000; cfg.freq_read=16000000; cfg.spi_3wire=false; cfg.use_lock=true; cfg.dma_channel=SPI_DMA_CH_AUTO; cfg.pin_sclk=5; cfg.pin_mosi=3; cfg.pin_miso=-1; cfg.pin_dc=2; _bus_instance.config(cfg); _panel_instance.setBus(&_bus_instance);}
+{auto cfg=_panel_instance.config(); cfg.pin_cs=4; cfg.pin_rst=1; cfg.pin_busy=-1; cfg.panel_width=80; cfg.panel_height=160; cfg.offset_x=26; cfg.offset_y=1; cfg.offset_rotation=0; cfg.dummy_read_pixel=8; cfg.dummy_read_bits=1; cfg.readable=true; cfg.invert=true; cfg.rgb_order=false; cfg.dlen_16bit=false; cfg.bus_shared=false; _panel_instance.config(cfg);}
+{auto cfg=_light_instance.config(); cfg.pin_bl=38; cfg.invert=true; cfg.freq=44100; cfg.pwm_channel=7; _light_instance.config(cfg); _panel_instance.setLight(&_light_instance);}
+setPanel(&_panel_instance);
+}
+};
+LGFX gfx; // Глобальный объект дисплея
+
+#define MESSAGE_DISPLAY_DURATION 3000
+#define BOOT_BUTTON_PIN 0
+
+
+// --- SETUP ---
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
+
+    if (sd_init()) {
+        is_sd_ok = true;
+        Serial.printf(" SD Card mounted. Capacity: %llu bytes\n", sdCardCapacity);
+        initConfig();
+    } else {
+        is_sd_ok = false;
+        Serial.println(" ERROR: sd_init() FAILED! Starting in menu mode.");
+        boot_config = BOOT_MODE_NORMAL;
+    }
+
+    // Проверка режима загрузки (2 или 3)
+    if (boot_config == BOOT_MODE_USB_START || boot_config == BOOT_MODE_USB_ACTIVE) {
+        start_usb_only_mode();
+        return;
+    }
+
+    Serial.println("\n\n--- Nexus-Dongle Booting Up (Menu Mode) ---");
+
+    gfx.begin();
+    gfx.setBrightness(255);
+    gfx.setRotation(3);
+
+    // Отображаем надпись загрузки
+    currentScreen = STATE_MESSAGE;
+    messageLine1 = (const char*)u8"ЗАГРУЗКА...";
+    messageLine2 = "";
+    drawScreen();
+
+    // --- ЛОГИКА АВТОПОДКЛЮЧЕНИЯ WI-FI ПРИ СТАРТЕ ---
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(true);
+    delay(100);
+
+    Serial.println("Startup: Scanning for saved networks...");
+    int n = WiFi.scanNetworks();
+    String bestMatchSSID = "";
+
+    if (n > 0) {
+        for (int i = 0; i < n; i++) {
+            String ssid = WiFi.SSID(i);
+            // Ищем сеть, которая есть в конфиге И имеет непустой пароль
+            if (wifiConfig.count(ssid) && wifiConfig[ssid].length() > 0) {
+                bestMatchSSID = ssid;
+                break; // Нашли первое совпадение, пытаемся подключиться
+            }
+        }
+    }
+
+    if (bestMatchSSID.length() > 0) {
+        Serial.printf("Startup: Found saved network '%s'. Attempting connection...\n", bestMatchSSID.c_str());
+        WiFi.begin(bestMatchSSID.c_str(), wifiConfig[bestMatchSSID].c_str());
+
+        // Блокирующий таймаут на 10 секунд (100 * 100 мс)
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 100) {
+            delay(100);
+            attempts++;
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("Startup: Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+        } else {
+            Serial.println("Startup: Connection failed or timed out.");
+        }
+    } else {
+        Serial.println("Startup: No matching saved networks found or scan failed.");
+    }
+    // --- КОНЕЦ ЛОГИКИ АВТОПОДКЛЮЧЕНИЯ ---
+
+    currentScreen = STATE_MAIN_MENU;
+    menuNeedsRedraw = true;
+    Serial.println("--- Setup Complete ---");
+}
+
+// --- LOOP ---
+void loop() {
+    if (currentScreen == STATE_WIFI_CONNECTING) {
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("WiFi Connected successfully!");
+            currentScreen = STATE_MESSAGE;
+            messageLine1 = (const char*)u8"Успешно!";
+            messageLine2 = "IP: " + WiFi.localIP().toString();
+            messageDisplayStartTime = millis(); // Запускаем таймер
+            menuNeedsRedraw = true;
+        } else if (millis() - wifiConnectStartTime > 30000) {
+            Serial.println("WiFi Connection failed (timeout).");
+            currentScreen = STATE_MESSAGE;
+            messageLine1 = (const char*)u8"Ошибка!";
+            messageLine2 = (const char*)u8"Неверный пароль?";
+            WiFi.disconnect();
+            menuNeedsRedraw = true;
+        }
+    }
+
+    // --- ЛОГИКА АВТОЗАКРЫТИЯ СООБЩЕНИЯ (3 СЕК) ---
+    if (currentScreen == STATE_MESSAGE) {
+        // Проверяем, что это сообщение об успешном подключении
+        if (messageLine1 == (const char*)u8"Успешно!") {
+            if (millis() - messageDisplayStartTime > MESSAGE_DISPLAY_DURATION) {
+                Serial.println("Auto-closing success message.");
+                currentScreen = STATE_WIFI_MENU; // Возвращаемся в меню Wi-Fi
+                menuNeedsRedraw = true;
+            }
+        }
+    }
+    // --- КОНЕЦ ЛОГИКИ АВТОЗАКРЫТИЯ ---
+
+    // Обработка экрана подготовки к USB
+    if (currentScreen == STATE_USB_PREPARE) {
+        if (millis() - usbPrepareStartTime > 5000) { // 5 секунд отсчета
+            Serial.println("Countdown finished. Rebooting into USB MSC mode...");
+            boot_config = BOOT_MODE_USB_START;
+            updateWifiConfig();
+            ESP.restart();
+        }
+        menuNeedsRedraw = true; // Нужна постоянная перерисовка для обновления таймера
+    }
+
+    handleInput();
+
+    if (menuNeedsRedraw) {
+        drawScreen();
+        // Сбрасываем режим USB_START на NORMAL, если мы попали в меню
+        if (boot_config == BOOT_MODE_USB_START) {
+            boot_config = BOOT_MODE_NORMAL;
+            updateWifiConfig();
+        }
+        menuNeedsRedraw = false;
+    }
+
+    delay(20);
+}

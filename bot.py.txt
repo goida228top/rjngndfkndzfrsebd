@@ -1,0 +1,244 @@
+# --- СПЕРВА ВЫПОЛНИТЕ В ТЕРМИНАЛЕ, ЧТОБЫ ОСВОБОДИТЬ ПОРТ ---
+# 1. sudo lsof -i :5000  (чтобы найти PID процесса)
+# 2. sudo kill -9 <PID>   (чтобы завершить старый процесс)
+#
+# --- ДЛЯ РАБОТЫ GEMINI УСТАНОВИТЕ ПЕРЕМЕННУЮ ОКРУЖЕНИЯ (ОПЦИОНАЛЬНО) ---
+# export GEMINI_API_KEY="ВАШ_API_КЛЮЧ"
+
+import asyncio
+import queue
+from flask import Flask, request, jsonify
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.request import HTTPXRequest
+import logging
+import threading
+import os
+import google.generativeai as genai
+
+# --- 0. ЛОГИРОВАНИЕ ---
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# --- 1. НАСТРОЙКИ ---
+TELEGRAM_BOT_TOKEN = "8269644597:AAErjQuu3b_kgH8p8MPaMWvSs1DEqUx0Dxo"
+ALLOWED_CHAT_ID = 5897265978
+GEMINI_MODEL_NAME = "gemini-2.5-flash-lite"
+
+# --- 1.1 НАСТРОЙКИ GEMINI ---
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+gemini_model = None  # Глобальный объект для модели
+
+if not GEMINI_API_KEY:
+    logger.warning("GEMINI_API_KEY environment variable not set. Using hardcoded fallback key.")
+    GEMINI_API_KEY = "AIzaSyBhVdPQOUub0qkVpmr5gqCgfiLD_FxT54c" 
+
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        # Инициализируем модель один раз при старте
+        gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+        logger.info(f"Gemini model '{GEMINI_MODEL_NAME}' initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to configure Gemini API or initialize model: {e}")
+        GEMINI_API_KEY = None # Сбрасываем ключ при ошибке
+else:
+    logger.warning("No Gemini API key found. Gemini features will be disabled.")
+
+
+# --- 2. ГЛОБАЛЬНЫЕ ОЧЕРЕДИ ---
+text_message_queue = queue.Queue()
+voice_message_queue = queue.Queue()
+
+# --- 3. FLASK WEB SERVER (ДЛЯ M5STICK) ---
+flask_app = Flask(__name__)
+
+@flask_app.route('/voice', methods=['POST'])
+def handle_voice():
+    if request.method == 'POST':
+        audio_data = request.get_data()
+        if audio_data:
+            logger.info(f"Received {len(audio_data)} bytes of voice data for Telegram. Queued for sending.")
+            voice_message_queue.put(audio_data)
+            return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "error"}), 400
+
+@flask_app.route('/gemini_voice', methods=['POST'])
+def handle_gemini_voice():
+    if not gemini_model:
+        logger.error("Gemini model not initialized, cannot process request.")
+        return "Error: Gemini model not initialized on server", 503
+
+    audio_data = request.get_data()
+    if not audio_data:
+        return "Error: No audio data received", 400
+    
+    logger.info(f"Received {len(audio_data)} bytes for Gemini processing.")
+    
+    try:
+        # ОБНОВЛЕННЫЙ "УМНЫЙ" ПРОМПТ
+        prompt = "Ты — дружелюбный и умный карманный ассистент в устройстве M5Stick. Твоя цель — давать полезные, полные, но краткие ответы. ПРАВИЛА ОТВЕТА: 1. Стиль: Будь дружелюбным, но говори по делу. Если тебя просто поприветствовали, ответь на приветствие кратко (например, 'Привет! Чем могу помочь?'). Для всех остальных запросов сразу давай ответ по существу, без вступлений. 2. Полнота: Ответ должен быть информативным. Например, на вопрос о самой высокой горе России, правильный ответ: 'Эльбрус - самая высокая гора России, находится на Кавказе.' 3. Формат: Ответ должен быть простым текстом, без markdown или списков. 4. Подтверждение: В конце каждого ответа, после основного текста, добавь разделитель ' | ' и фразу 'Запрос:' с тем, как ты понял исходный вопрос. Например: '... | Запрос: какая самая высокая гора в России?'"
+        audio_part = {'mime_type': 'audio/wav', 'data': audio_data}
+        
+        request_options = {"timeout": 120}
+        
+        # ИСПОЛЬЗУЕМ СОЗДАННЫЙ РАНЕЕ ОБЪЕКТ МОДЕЛИ
+        response = gemini_model.generate_content(
+            contents=[prompt, audio_part],
+            request_options=request_options
+        )
+        
+        logger.info("Successfully received response from Gemini.")
+        return response.text, 200
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}", exc_info=True)
+        return f"Error: Failed to process request with Gemini API", 500
+
+
+@flask_app.route('/gemini_followup', methods=['POST'])
+def handle_gemini_followup():
+    if not gemini_model:
+        logger.error("Gemini model not initialized, cannot process request.")
+        return "Error: Gemini model not initialized on server", 503
+
+    audio_data = request.get_data()
+    previous_response = request.headers.get('X-Previous-Response')
+
+    if not audio_data or not previous_response:
+        return "Error: Missing audio data or previous response header", 400
+    
+    logger.info(f"Received {len(audio_data)} bytes for Gemini follow-up.")
+    logger.info(f"Previous context: {previous_response}")
+
+    try:
+        # ОБНОВЛЕННЫЙ ПРОМПТ ДЛЯ УТОЧНЕНИЯ
+        prompt = (
+            "Ты — дружелюбный и умный карманный ассистент в устройстве M5Stick. "
+            "Твоя цель — давать полезные, полные, но краткие ответы. "
+            "Это уточняющий вопрос. Веди диалог, основываясь на предыдущем ответе.\n\n"
+            "== ПРЕДЫДУЩИЙ ОТВЕТ ==\n"
+            f"{previous_response}\n"
+            "== КОНЕЦ ПРЕДЫДУЩЕГО ОТВЕТА ==\n\n"
+            "Теперь ответь на новый голосовой запрос пользователя, учитывая этот контекст. "
+            "ПРАВИЛА ОТВЕТА: 1. Стиль: Дружелюбный, по делу, продолжай диалог. "
+            "2. Формат: Простой текст. 3. Подтверждение: В конце каждого ответа, после основного текста, "
+            "добавь разделитель ' | ' и фразу 'Запрос:' с тем, как ты понял ИМЕННО ПОСЛЕДНИЙ (уточняющий) вопрос."
+        )
+        audio_part = {'mime_type': 'audio/wav', 'data': audio_data}
+        
+        request_options = {"timeout": 120}
+        
+        response = gemini_model.generate_content(
+            contents=[prompt, audio_part],
+            request_options=request_options
+        )
+        
+        logger.info("Successfully received follow-up response from Gemini.")
+        return response.text, 200
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API for follow-up: {e}", exc_info=True)
+        return f"Error: Failed to process follow-up request with Gemini API", 500
+
+
+@flask_app.route('/message', methods=['GET'])
+def get_message():
+    if not text_message_queue.empty():
+        message = text_message_queue.get()
+        logger.info(f"Delivering message to M5Stick: '{message}'")
+        return message, 200
+    else:
+        return '', 204
+
+def run_flask():
+    try:
+        flask_app.run(host='0.0.0.0', port=5000, threaded=True)
+    except OSError as e:
+        if e.errno == 98:
+            logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            logger.error("!!! ПОРТ 5000 УЖЕ ЗАНЯТ! WEB-СЕРВЕР НЕ ЗАПУЩЕН.      !!!")
+            logger.error("!!! 1. Найдите старый процесс: sudo lsof -i :5000    !!!")
+            logger.error("!!! 2. Остановите его: sudo kill -9 <PID>            !!!")
+            logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            os._exit(1)
+        else:
+            raise
+
+# --- 4. TELEGRAM BOT ---
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("👋 Привет! Я бот для M5StickC. Отправь мне текст.")
+
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message.chat_id != ALLOWED_CHAT_ID:
+        logger.warning(f"Blocked message from unauthorized chat_id: {update.message.chat_id}")
+        await update.message.reply_text("❌ Извините, вы не авторизованы.")
+        return
+
+    text = update.message.text
+    text_message_queue.put(text)
+    logger.info(f"Queued message for M5Stick: '{text}'")
+    await update.message.reply_text(f"✅ В очереди для M5StickC: '{text}'")
+
+async def voice_sender_worker(app: Application) -> None:
+    logger.info("Telegram voice worker started.")
+    while True:
+        try:
+            if not voice_message_queue.empty():
+                audio_data = voice_message_queue.get_nowait()
+                logger.info(f"Worker processing voice message of {len(audio_data)} bytes for Telegram...")
+                await app.bot.send_voice(
+                    chat_id=ALLOWED_CHAT_ID,
+                    voice=audio_data,
+                    caption="🎤 Голосовое с M5StickC"
+                )
+                logger.info("Voice message sent to Telegram successfully.")
+                voice_message_queue.task_done()
+            else:
+                await asyncio.sleep(0.1) 
+        except asyncio.CancelledError:
+            logger.info("Voice worker is shutting down.")
+            break
+        except Exception as e:
+            logger.error(f"Error sending voice message to Telegram: {e}", exc_info=True)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+# --- 5. ФУНКЦИЯ ДЛЯ ЗАПУСКА ФОНОВЫХ ЗАДАЧ ---
+async def post_init(app: Application) -> None:
+    flask_thread = threading.Thread(
+        target=run_flask,
+        daemon=True
+    )
+    flask_thread.start()
+    logger.info("Flask web server is starting in a background thread.")
+    asyncio.create_task(voice_sender_worker(app))
+
+# --- 6. ОСНОВНАЯ ФУНКЦИЯ ЗАПУСКА ---
+def main() -> None:
+    request = HTTPXRequest(connect_timeout=10.0, read_timeout=30.0, write_timeout=60.0)
+    builder = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request)
+    builder.post_init(post_init)
+    tg_app = builder.build()
+
+    tg_app.add_handler(CommandHandler("start", start_command))
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    tg_app.add_error_handler(error_handler)
+
+    logger.info("Telegram Bot is starting...")
+    tg_app.run_polling()
+
+
+if __name__ == '__main__':
+    print("--- M5StickC Telegram & Gemini Server ---")
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("\nINFO: GEMINI_API_KEY env var is not set, using internal fallback key.")
+    if not gemini_model:
+         print("\nWARNING: Gemini Model could not be initialized. The Gemini Assistant feature will not work.")
+    main()

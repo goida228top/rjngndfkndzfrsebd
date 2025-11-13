@@ -1,0 +1,8 @@
+#ifndef WAV_HELPER_H
+#define WAV_HELPER_H
+
+#include <Arduino.h>
+
+void createWavHeader_manual(uint8_t* header, size_t data_size);
+
+#endif // WAV_HELPER_H

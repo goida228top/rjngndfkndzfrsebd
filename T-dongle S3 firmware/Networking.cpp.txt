@@ -1,0 +1,31 @@
+#include "Networking.h"
+#include "UI.h"
+#include "WiFi.h"
+#include "Arduino.h"
+
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (ОПРЕДЕЛЕНИЕ) ---
+std::vector<TargetInfo> foundNetworks;
+
+
+// --- ФУНКЦИЯ СКАНИРОВАНИЯ WIFI ---
+void performWifiScan() {
+    Serial.println("Scanning Wi-Fi networks...");
+    
+    // Устанавливаем UI для отображения сканирования
+    currentScreen = STATE_MESSAGE;
+    messageLine1 = (const char*)u8"Сканирование...";
+    messageLine2 = "";
+    drawScreen(); // Вызываем отрисовку экрана сообщения
+    
+    int n = WiFi.scanNetworks();
+    Serial.printf("Scan done, %d networks found\n", n);
+    
+    foundNetworks.clear();
+    foundNetworks.push_back({(const char*)u8"Назад", "", 0}); // Добавляем опцию "Назад"
+    for (int i=0; i<n; i++) {
+        if (foundNetworks.size() >= 15) break; // Ограничиваем количество сетей до 15
+        foundNetworks.push_back({WiFi.SSID(i), WiFi.BSSIDstr(i), WiFi.channel(i)});
+    }
+    
+    // Вызывающая функция установит следующий экран и вызовет перерисовку.
+}

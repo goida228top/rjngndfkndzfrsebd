@@ -1,0 +1,30 @@
+#ifndef HARDWARE_H
+#define HARDWARE_H
+
+#include "Arduino.h"
+#include <map>
+#include "sdmmc_cmd.h"
+#include "USBMSC.h"
+#include "Types.h"
+
+// --- ОБЪЯВЛЕНИЕ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ ---
+extern bool is_sd_ok;
+extern uint32_t boot_config;
+extern std::map<String, String> wifiConfig;
+extern sdmmc_card_t *card;
+extern USBMSC USBCard;
+extern uint64_t sdCardCapacity;
+
+
+// --- ОБЪЯВЛЕНИЯ ФУНКЦИЙ ---
+bool sd_init(void);
+void sd_unmount(void);
+
+void initConfig();
+void readWifiConfig();
+void updateWifiConfig();
+
+void start_usb_only_mode();
+void handleInput();
+
+#endif // HARDWARE_H

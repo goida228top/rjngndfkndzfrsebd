@@ -1,0 +1,11 @@
+#ifndef ATTACKS_H
+#define ATTACKS_H
+
+#include "Types.h"
+
+// Starts a network audit tool on a specific AP.
+// This function takes over the main loop until a button is pressed,
+// then restarts the device to ensure a clean state.
+void startDeauthAttack(const TargetInfo& ap);
+
+#endif // ATTACKS_H

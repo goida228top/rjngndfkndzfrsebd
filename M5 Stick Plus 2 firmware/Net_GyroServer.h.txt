@@ -1,0 +1,8 @@
+#ifndef NET_GYRO_SERVER_H
+#define NET_GYRO_SERVER_H
+
+void startGyroServer();
+void stopGyroServer();
+void handleGyroServerClient();
+
+#endif // NET_GYRO_SERVER_H

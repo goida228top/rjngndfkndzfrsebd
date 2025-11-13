@@ -1,0 +1,45 @@
+#include "Globals.h"
+#include <WebServer.h>
+
+// --- НАСТРОЙКИ ---
+const int SAMPLE_RATE = 8000;
+const int RECORD_BUFFER_SIZE = 80000;
+
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+
+// Состояние системы
+Mode menuMode;
+int selectedItem = 0;
+bool isFirstRecording = true;
+unsigned long stealth_clock_exit_time = 0;
+
+// Буферы записи
+uint8_t* rec_data = nullptr;
+size_t recorded_bytes = 0;
+uint8_t* last_rec_data = nullptr;
+size_t last_recorded_bytes = 0;
+
+// Состояние сообщений
+String receivedMessage = "";
+bool newMessageReceived = false;
+unsigned long messageTimestamp = 0;
+int currentPage = 0;
+int totalPages = 0;
+
+// Состояние UI
+int messageMenuSelection = 0;
+String diagStatusGoogle = "Waiting...";
+String diagStatusServer = "Waiting...";
+bool isClockDarkTheme = false;
+int clockRotation = 1;
+
+// Пагинация
+String pages[MAX_PAGES];
+
+// Сеть
+Preferences preferences;
+WebServer server(80);
+
+void setMenuMode(Mode newMode) {
+    menuMode = newMode;
+}

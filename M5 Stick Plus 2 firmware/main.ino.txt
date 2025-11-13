@@ -1,0 +1,111 @@
+#include <M5StickCPlus2.h>
+#include "Types.h"
+#include "Globals.h"
+#include "UI.h"
+#include "Networking.h"
+#include "Gesture.h"
+#include "InputHandler.h"
+#include "Recording.h"
+
+// --- SETUP ---
+void setup() {
+    M5.begin();
+    M5.Lcd.setRotation(0);
+    M5.Lcd.setTextFont(2);
+    Serial.begin(115200);
+
+    WiFi.setAutoReconnect(true);
+
+    rec_data = (uint8_t*)malloc(RECORD_BUFFER_SIZE);
+    last_rec_data = (uint8_t*)malloc(RECORD_BUFFER_SIZE);
+    if (!rec_data || !last_rec_data) {
+        Serial.println("Failed to allocate memory for recording buffer!");
+        M5.Lcd.fillScreen(TFT_RED);
+        M5.Lcd.drawString("Memory Error!", 20, 60);
+        while(1);
+    }
+
+    loadAndConnectWiFi();
+    
+    M5.Mic.begin();
+    M5.Mic.end();
+
+    if (M5.Imu.begin()) {
+        Serial.println("IMU initialized successfully.");
+    } else {
+        Serial.println("IMU initialization failed!");
+    }
+
+    Serial.println("Setup complete. Device is ready.");
+    displayMenu(); // Initial display
+}
+
+// --- LOOP ---
+void loop() {
+    M5.update();
+
+    handleStealthClockGesture();
+    handleInput();
+
+    // Обновление времени в статус-баре для основных экранов
+    static unsigned long lastStatusBarTimeUpdate = 0;
+    if ((menuMode == MODE_MAIN_MENU || menuMode == MODE_WIFI_MENU || menuMode == MODE_DIAGNOSTICS || menuMode == MODE_GYROSCOPE) && (millis() - lastStatusBarTimeUpdate > 1000)) {
+        drawStatusBar(); // Эта функция теперь рисует и время
+        lastStatusBarTimeUpdate = millis();
+    }
+
+    // Обработка логики для конкретных режимов
+    switch(menuMode) {
+        case MODE_MESSAGE_STANDBY:
+            handleNetwork();
+            break;
+        case MODE_WIFI_CONFIG:
+            handleConfigurationMode();
+            // Allow user to go back from the AP screen
+            if (M5.BtnB.wasPressed()) {
+                stopConfigurationMode();
+                setMenuMode(MODE_WIFI_MENU);
+                displayMenu();
+            }
+            break;
+        case MODE_GYROSCOPE:
+            handleGyroServerClient(); // Обрабатываем запросы к веб-серверу
+            break;
+        case MODE_STEALTH_CLOCK:
+            {
+                static unsigned long lastClockUpdateTime = 0;
+
+                // --- НОВАЯ ЛОГИКА ОРИЕНТАЦИИ ЧАСОВ ---
+                if (M5.Imu.update()) {
+                    auto data = M5.Imu.getImuData();
+                    float ay = -data.accel.x; 
+
+                    if (ay < -0.3f && ay > -1.0f) {
+                        clockRotation = 1; // Обычный ландшафтный режим
+                    } 
+                    else if (ay > 0.3f && ay < 1.0f) {
+                        clockRotation = 3; // Перевернутый ландшафтный режим (на 180 градусов)
+                    }
+                }
+                // --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
+                if (millis() - lastClockUpdateTime >= 1000) { 
+                    displayMenu();
+                    lastClockUpdateTime = millis();
+                }
+            }
+            break;
+        case MODE_VOICE_RECORDING:
+            handleVoiceRecording();
+            break;
+        case MODE_GEMINI_RECORDING:
+            handleGeminiRecording();
+            break;
+        case MODE_GEMINI_FOLLOWUP_RECORDING:
+            handleGeminiFollowupRecording();
+            break;
+        default:
+            // No special loop logic for other modes
+            break;
+    }
+}

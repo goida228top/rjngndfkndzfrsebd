@@ -1,0 +1,194 @@
+#include "InputHandler.h"
+#include "Globals.h"
+#include "UI.h"
+#include "Networking.h" // for start/stop gyro/config
+#include "WavHelper.h"
+
+void handleInput() {
+    // --- ОБРАБОТКА ВВОДА В ЗАВИСИМОСТИ ОТ РЕЖИМА ---
+
+    if (M5.BtnA.wasPressed()) {
+        switch (menuMode) {
+            case MODE_MAIN_MENU:
+                switch (selectedItem) {
+                    case 0: // Wi-Fi
+                        setMenuMode(MODE_WIFI_MENU);
+                        selectedItem = 0;
+                        displayMenu();
+                        break;
+                    case 1: // Gemini Ассистент
+                        isFirstRecording = true;
+                        setMenuMode(MODE_GEMINI_RECORDING);
+                        displayMenu();
+                        break;
+                    case 2: // Голосовые С
+                        isFirstRecording = true;
+                        setMenuMode(MODE_VOICE_RECORDING);
+                        displayMenu();
+                        break;
+                    case 3: // Сообщения
+                        paginateMessage(receivedMessage);
+                        newMessageReceived = false;
+                        messageTimestamp = millis();
+                        setMenuMode(MODE_MESSAGE_STANDBY);
+                        displayMenu();
+                        break;
+                    case 4: // Гироскоп
+                        setMenuMode(MODE_GYROSCOPE);
+                        startGyroServer();
+                        displayMenu();
+                        break;
+                    case 5: // Диагностика
+                        setMenuMode(MODE_DIAGNOSTICS);
+                        displayMenu();
+                        runNetworkDiagnostics();
+                        break; 
+                    case 6: M5.Power.powerOff(); break; // Выключение
+                }
+                break;
+            case MODE_WIFI_MENU:
+                switch (selectedItem) {
+                    case 0: // Setup New Network
+                        startConfigurationMode(); 
+                        break; 
+                    case 1: // Back
+                        setMenuMode(MODE_MAIN_MENU);
+                        selectedItem = 0;
+                        displayMenu();
+                        break;
+                }
+                break;
+            case MODE_MESSAGE_STANDBY:
+                switch (messageMenuSelection) {
+                    case 0: // <
+                        if (totalPages > 0) {
+                            currentPage = (currentPage - 1 + totalPages) % totalPages;
+                        }
+                        displayMenu();
+                        break;
+                    case 1: // >
+                        if (totalPages > 0) {
+                            currentPage = (currentPage + 1) % totalPages;
+                        }
+                        displayMenu();
+                        break;
+                    case 2: // Выход
+                        setMenuMode(MODE_MAIN_MENU);
+                        displayMenu();
+                        break;
+                    case 3: // Вопрос
+                        isFirstRecording = true;
+                        setMenuMode(MODE_GEMINI_FOLLOWUP_RECORDING);
+                        displayMenu();
+                        break;
+                    case 4: // Заново
+                        if (last_recorded_bytes > 0) {
+                            M5.Lcd.fillScreen(TFT_BLUE);
+                            M5.Lcd.drawString("Regenerating...", 60, 60);
+                            
+                            uint8_t wavHeader[44];
+                            createWavHeader_manual(wavHeader, last_recorded_bytes);
+                            size_t total_len = sizeof(wavHeader) + last_recorded_bytes;
+                            uint8_t* wav_buffer = (uint8_t*)malloc(total_len);
+                            if (wav_buffer) {
+                                memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
+                                memcpy(wav_buffer + sizeof(wavHeader), last_rec_data, last_recorded_bytes);
+                                sendVoiceToGemini(wav_buffer, total_len);
+                                free(wav_buffer);
+                                setMenuMode(MODE_MESSAGE_STANDBY);
+                            } else {
+                                M5.Lcd.fillScreen(TFT_RED);
+                                M5.Lcd.drawString("Memory Error!", 20, 60);
+                                delay(2000);
+                                setMenuMode(MODE_MAIN_MENU);
+                            }
+                            displayMenu();
+                        }
+                        break;
+                }
+                break;
+            case MODE_STEALTH_CLOCK:
+                isClockDarkTheme = !isClockDarkTheme;
+                displayMenu();
+                break;
+            case MODE_CONNECTION_FAILED:
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                break;
+        }
+    }
+
+    // BtnB is UP (короткое нажатие)
+    if (M5.BtnB.wasPressed()) {
+        switch (menuMode) {
+            case MODE_MAIN_MENU:
+                selectedItem = (selectedItem - 1 + numMainMenu) % numMainMenu;
+                displayMenu();
+                break;
+            case MODE_WIFI_MENU:
+                selectedItem = (selectedItem - 1 + numWifiMenu) % numWifiMenu;
+                displayMenu();
+                break;
+            case MODE_MESSAGE_STANDBY:
+                messageMenuSelection = (messageMenuSelection - 1 + numMessageMenu) % numMessageMenu;
+                displayMenu();
+                break;
+             case MODE_VOICE_RECORDING:
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                break;
+             case MODE_GEMINI_RECORDING:
+             case MODE_GEMINI_FOLLOWUP_RECORDING:
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                break;
+             case MODE_GYROSCOPE:
+                stopGyroServer();
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                break;
+             case MODE_DIAGNOSTICS:
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                break;
+        }
+    }
+
+    // --- СПЕЦИАЛЬНАЯ ОБРАБОТКА УДЕРЖАНИЯ КНОПКИ B ДЛЯ ВЫХОДА ИЗ STEALTH РЕЖИМА ---
+    static unsigned long btnBPressStartTime = 0;
+    if (menuMode == MODE_STEALTH_CLOCK) {
+        if (M5.BtnB.isPressed()) {
+            if (btnBPressStartTime == 0) { // Засекаем время в самом начале нажатия
+                btnBPressStartTime = millis();
+            } else if (millis() - btnBPressStartTime > 3000) { // Проверяем, прошло ли 3 секунды
+                setMenuMode(MODE_MAIN_MENU);
+                stealth_clock_exit_time = millis(); // Запоминаем время выхода для кулдауна
+                displayMenu();
+                btnBPressStartTime = 0; // Сбрасываем, чтобы не сработало снова до нового нажатия
+                while(M5.BtnB.isPressed()) M5.update(); // Ждем отпускания кнопки
+            }
+        } else {
+            btnBPressStartTime = 0; // Сбрасываем таймер, если кнопка отпущена
+        }
+    }
+    // --- КОНЕЦ СПЕЦИАЛЬНОЙ ОБРАБОТКИ ---
+
+
+    // BtnPWR is DOWN
+    if (M5.BtnPWR.wasPressed()) {
+        switch (menuMode) {
+            case MODE_MAIN_MENU:
+                selectedItem = (selectedItem + 1) % numMainMenu;
+                displayMenu();
+                break;
+             case MODE_WIFI_MENU:
+                selectedItem = (selectedItem + 1) % numWifiMenu;
+                displayMenu();
+                break;
+            case MODE_MESSAGE_STANDBY:
+                messageMenuSelection = (messageMenuSelection + 1) % numMessageMenu;
+                displayMenu();
+                break;
+        }
+    }
+}

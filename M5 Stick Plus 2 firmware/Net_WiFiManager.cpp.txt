@@ -1,0 +1,97 @@
+#include "Net_WiFiManager.h"
+#include "Globals.h"
+#include "UI.h"
+#include <WiFi.h>
+#include <time.h>
+
+// --- НАСТРОЙКИ ВРЕМЕНИ ---
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 2 * 3600; // GMT+2
+const int daylightOffset_sec = 0; // Отключаем летнее время
+
+
+void loadAndConnectWiFi() {
+    preferences.begin("wifi-creds", false);
+    String ssid = preferences.getString("ssid", "");
+    String pass = preferences.getString("password", "");
+    preferences.end();
+
+    if (ssid.length() > 0) {
+        Serial.printf("Found saved WiFi credentials for %s.\n", ssid.c_str());
+        connectWiFiWithCustomDNS(ssid.c_str(), pass.c_str(), true);
+    } else {
+        Serial.println("No saved WiFi credentials found. Go to menu to set up.");
+        // If no credentials, go straight to main menu
+        setMenuMode(MODE_MAIN_MENU);
+        displayMenu();
+    }
+}
+
+void saveWiFiCredentials(const char* ssid, const char* pass) {
+    preferences.begin("wifi-creds", false);
+    preferences.putString("ssid", ssid);
+    preferences.putString("password", pass);
+    preferences.end();
+    Serial.printf("Saved credentials for %s\n", ssid);
+}
+
+void connectWiFiWithCustomDNS(const char* ssid, const char* pass, bool isAutoConnect) {
+    setMenuMode(MODE_CONNECTING);
+    displayMenu();
+    delay(100);
+
+    Serial.printf("Connecting to: %s\n", ssid);
+    WiFi.begin(ssid, pass);
+
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) { // Reduced attempts to 10 seconds
+        Serial.print(".");
+        delay(500);
+        attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nWiFi connected!");
+        Serial.print("IP address: ");
+        Serial.println(WiFi.localIP());
+
+        // --- КОНФИГУРАЦИЯ И СИНХРОНИЗАЦИЯ ВРЕМЕНИ (БЛОКИРУЮЩАЯ) ---
+        setMenuMode(MODE_TIME_SYNCING);
+        displayMenu();
+        delay(100);
+
+        Serial.println("Configuring and syncing time with NTP server...");
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        
+        struct tm timeinfo;
+        int sync_attempts = 0;
+        // Попытка синхронизации в течение 10 секунд
+        while (!getLocalTime(&timeinfo, 100) && sync_attempts < 100) {
+            Serial.print(".");
+            delay(100);
+            sync_attempts++;
+        }
+
+        if (sync_attempts < 100) {
+            Serial.println("\nTime synchronized successfully.");
+        } else {
+            Serial.println("\nTime synchronization failed.");
+        }
+
+        if (!isAutoConnect) { // Save only if connected manually, loadAndConnectWiFi already has saved creds.
+             saveWiFiCredentials(ssid, pass);
+        }
+        resetUIState();
+        setMenuMode(MODE_MAIN_MENU);
+        displayMenu();
+    } else {
+        Serial.println("\nFailed to connect.");
+        setMenuMode(MODE_CONNECTION_FAILED);
+        displayMenu();
+    }
+}
+
+
+bool isWifiConnected() {
+    return (WiFi.status() == WL_CONNECTED);
+}

@@ -1,0 +1,146 @@
+#include "Net_ConfigPortal.h"
+#include "Net_WiFiManager.h" // for saveWiFiCredentials
+#include "Globals.h"
+#include "UI.h"
+#include <WebServer.h>
+#include <DNSServer.h>
+
+
+// --- WEB SERVER & DNS ---
+DNSServer dnsServer;
+
+// --- HTML ДЛЯ СТРАНИЦЫ НАСТРОЙКИ ---
+const char* CONFIG_HTML = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>M5-Nexus Wi-Fi Setup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f0f0; text-align: center; }
+        .container { max-width: 400px; margin: 20px auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .wifi-list { list-style: none; padding: 0; text-align: left; max-height: 150px; overflow-y: auto; border: 1px solid #ddd; }
+        .wifi-list li { padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
+        .wifi-list li:hover { background-color: #eee; }
+        input[type=text], input[type=password] { width: 95%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; }
+        input[type=submit] { background-color: #4CAF50; color: white; padding: 14px 20px; margin: 8px 0; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
+        input[type=submit]:hover { background-color: #45a049; }
+        .loader-container { padding-top: 50px; }
+        .loader { border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 60px; height: 60px; animation: spin 2s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #main-content { display: block; }
+        #loading-content { display: none; }
+    </style>
+    <script>
+        function selectSSID(ssid) {
+            document.getElementById('ssid').value = ssid;
+        }
+        function handleSubmit() {
+            document.getElementById('main-content').style.display = 'none';
+            document.getElementById('loading-content').style.display = 'block';
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div id="main-content">
+            <h1>M5-Nexus Wi-Fi Setup</h1>
+            <h3>1. Select a Network</h3>
+            <ul class="wifi-list">
+                %WIFI_LIST%
+            </ul>
+            <h3>2. Enter Credentials</h3>
+            <form action="/save" method="POST" onsubmit="return handleSubmit()">
+                <input type="text" id="ssid" name="ssid" placeholder="SSID (Network Name)" required>
+                <input type="password" name="password" placeholder="Password">
+                <input type="submit" value="Save & Connect">
+            </form>
+        </div>
+        <div id="loading-content">
+            <div class="loader-container">
+                <div class="loader"></div>
+                <h2>Saving credentials...</h2>
+                <p>The device will restart.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+)rawliteral";
+
+void handleRoot() {
+    Serial.println("Serving root page.");
+    int numNetworks = WiFi.scanNetworks();
+    String wifi_list_items;
+    if (numNetworks == 0) {
+        wifi_list_items = "<li>No networks found. Refresh page to scan again.</li>";
+    } else {
+        for (int i = 0; i < numNetworks; ++i) {
+            wifi_list_items += "<li onclick='selectSSID(\"" + WiFi.SSID(i) + "\")'>" + WiFi.SSID(i) + "</li>";
+        }
+    }
+    String html = CONFIG_HTML;
+    html.replace("%WIFI_LIST%", wifi_list_items);
+    server.send(200, "text/html", html);
+}
+
+void handleSave() {
+    Serial.println("Received save request.");
+    String ssid = server.arg("ssid");
+    String password = server.arg("password");
+
+    if (ssid.length() > 0) {
+        saveWiFiCredentials(ssid.c_str(), password.c_str());
+        String response_html = "<h1>Saved!</h1><p>Credentials saved for " + ssid + ". The device will now restart and attempt to connect.</p><p>You can close this window.</p>";
+        server.send(200, "text/html", response_html);
+        delay(2000);
+        
+        dnsServer.stop();
+        server.stop();
+        WiFi.softAPdisconnect(true);
+        
+        Serial.println("Restarting device...");
+        ESP.restart();
+    } else {
+        server.send(400, "text/html", "<h1>Error</h1><p>SSID cannot be empty. Please go back and try again.</p>");
+    }
+}
+
+
+// --- РЕЖИМ КОНФИГУРАЦИИ WIFI ---
+void startConfigurationMode() {
+    setMenuMode(MODE_WIFI_CONFIG);
+    displayMenu();
+    
+    const char* ap_ssid = "M5-Nexus-Setup";
+    IPAddress apIP(192, 168, 4, 1);
+    
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(ap_ssid);
+    delay(100);
+    WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+
+    dnsServer.start(53, "*", apIP);
+
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/save", HTTP_POST, handleSave);
+    server.onNotFound(handleRoot); // Captive portal redirect
+
+    server.begin();
+    Serial.println("Configuration portal started.");
+}
+
+void stopConfigurationMode() {
+    dnsServer.stop();
+    server.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA); // Switch back to station mode
+    Serial.println("Configuration portal stopped by user.");
+}
+
+void handleConfigurationMode() {
+    dnsServer.processNextRequest();
+    server.handleClient();
+}

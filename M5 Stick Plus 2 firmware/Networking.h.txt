@@ -1,0 +1,13 @@
+#ifndef NETWORKING_H
+#define NETWORKING_H
+
+// Master include for all networking modules
+#include "Net_ApiClient.h"
+#include "Net_ConfigPortal.h"
+#include "Net_Diagnostics.h"
+#include "Net_GyroServer.h"
+#include "Net_WiFiManager.h"
+
+#define SERVER_ADDRESS "http://64.188.92.134:5000" 
+
+#endif // NETWORKING_H

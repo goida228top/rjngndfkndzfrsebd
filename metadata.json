@@ -1,0 +1,5 @@
+{
+  "name": "M5-Nexus Project Hub",
+  "description": "A container project for M5StickCPlus2 and Camera firmware.",
+  "requestFramePermissions": []
+}

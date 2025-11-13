@@ -1,0 +1,14 @@
+#ifndef NETWORKING_H
+#define NETWORKING_H
+
+#include "Arduino.h"
+#include <vector>
+#include "Types.h"
+
+// --- ОБЪЯВЛЕНИЕ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ ---
+extern std::vector<TargetInfo> foundNetworks;
+
+// --- ОБЪЯВЛЕНИЯ ФУНКЦИЙ ---
+void performWifiScan();
+
+#endif // NETWORKING_H

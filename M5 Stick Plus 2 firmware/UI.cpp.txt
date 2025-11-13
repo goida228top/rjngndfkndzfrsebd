@@ -1,0 +1,498 @@
+#include "UI.h"
+#include "Networking.h"
+#include "Globals.h"
+#include "UI_MenuDefs.h"
+#include <time.h> // Для часов
+
+// --- КОНСТАНТЫ ---
+const int SCROLL_SPEED = 5;
+const int NORMAL_BRIGHTNESS = 100;
+const int STANDBY_BRIGHTNESS = 10;
+
+
+// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+
+void resetUIState() {
+    selectedItem = 0;
+    messageMenuSelection = 0;
+    isClockDarkTheme = false;
+    clockRotation = 1; // Сброс ориентации часов при выходе из режима
+}
+
+// УПРОЩЕННАЯ ФУНКЦИЯ ДЛЯ ОТРИСОВКИ СТАТУС-БАРА
+void drawStatusBar() {
+    int statusBarY = 0;
+    int statusBarH = 20;
+    M5.Lcd.fillRect(0, statusBarY, M5.Lcd.width(), statusBarH, TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    M5.Lcd.setTextDatum(ML_DATUM);
+    M5.Lcd.drawString("M5-Nexus", 5, statusBarY + (statusBarH / 2));
+
+    // --- Отображение времени ---
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 10)) { // 10ms таймаут, не блокирующий
+        char timeStr[6];
+        strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString(timeStr, M5.Lcd.width() / 2, statusBarY + (statusBarH / 2));
+    }
+
+
+    // --- Индикатор Wi-Fi ---
+    int wifiCircleX = M5.Lcd.width() - 45;
+    int wifiCircleY = statusBarY + (statusBarH / 2);
+    int circleRadius = 5;
+
+    if (isWifiConnected()) {
+        M5.Lcd.fillCircle(wifiCircleX, wifiCircleY, circleRadius, TFT_GREEN);
+    } else {
+        M5.Lcd.fillCircle(wifiCircleX, wifiCircleY, circleRadius, TFT_RED);
+    }
+    
+    // --- Индикатор батареи ---
+    int batLevel = M5.Power.getBatteryLevel();
+    uint16_t batColor = TFT_GREEN;
+    if (batLevel <= 25) batColor = TFT_RED;
+    else if (batLevel <= 50) batColor = TFT_YELLOW;
+    
+    int batIconX = M5.Lcd.width() - 25;
+    int batIconY = statusBarY + 5;
+    M5.Lcd.drawRect(batIconX, batIconY, 18, 9, batColor); // Корпус
+    M5.Lcd.drawRect(batIconX + 18, batIconY + 2, 2, 5, batColor); // Терминал
+
+    int numBars = 0;
+    if (batLevel > 75) numBars = 4;
+    else if (batLevel > 50) numBars = 3;
+    else if (batLevel > 25) numBars = 2;
+    else if (batLevel > 0) numBars = 1;
+
+    if (numBars > 0) {
+        int barWidth = 3;
+        int barHeight = 5;
+        int barY = batIconY + 2;
+        for (int i = 0; i < numBars; i++) {
+            int barX = batIconX + 2 + (i * 4);
+            M5.Lcd.fillRect(barX, barY, barWidth, barHeight, batColor);
+        }
+    }
+
+    M5.Lcd.setTextDatum(TL_DATUM);
+    M5.Lcd.setTextColor(TFT_WHITE);
+}
+
+
+// --- ФУНКЦИИ ОТРИСОВКИ ---
+
+void drawMainMenu(const char* menuItems[], int itemCount, int yOffset = 30) {
+    M5.Lcd.fillScreen(TFT_WHITE);
+    drawStatusBar(); 
+    
+    M5.Lcd.setTextColor(TFT_BLACK);
+    M5.Lcd.setFont(&fonts::efontCN_12); 
+    int y = yOffset;
+    int lineHeight = 18; // Уменьшим, чтобы влезло
+
+    for (int i = 0; i < itemCount; i++) {
+        if (i == selectedItem) {
+            M5.Lcd.fillRect(0, y - 4, M5.Lcd.width(), lineHeight, TFT_BLACK);
+            M5.Lcd.setTextColor(TFT_WHITE);
+            M5.Lcd.setCursor(20, y);
+            M5.Lcd.print(menuItems[i]);
+            M5.Lcd.setTextColor(TFT_BLACK);
+        } else {
+            M5.Lcd.setCursor(20, y);
+            M5.Lcd.print(menuItems[i]);
+        }
+        y += lineHeight;
+    }
+}
+
+void drawWifiMenu() {
+    drawMainMenu(wifiMenu, numWifiMenu, 50);
+}
+
+void drawWifiConfigScreen() {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    drawStatusBar();
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    M5.Lcd.setRotation(1); // Set landscape for more space
+    
+    M5.Lcd.setTextDatum(MC_DATUM);
+    M5.Lcd.drawString("Wi-Fi Setup Mode", M5.Lcd.width() / 2, 20);
+    
+    M5.Lcd.setTextDatum(TL_DATUM);
+    M5.Lcd.drawString("1. Connect to Wi-Fi network:", 10, 45);
+    M5.Lcd.setTextColor(TFT_YELLOW);
+    M5.Lcd.drawString("   'M5-Nexus-Setup'", 10, 65);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.drawString("2. Open browser and go to:", 10, 90);
+    M5.Lcd.setTextColor(TFT_YELLOW);
+    M5.Lcd.drawString("   http://192.168.4.1", 10, 110);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.drawString("3. Press Button B to cancel.", 10, 135);
+    
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+void drawConnectionFailedScreen() {
+    M5.Lcd.setRotation(0);
+    M5.Lcd.fillScreen(TFT_RED);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    M5.Lcd.setTextDatum(MC_DATUM);
+    M5.Lcd.drawString("Connection Failed", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 25);
+    M5.Lcd.drawString("Check password or", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 5);
+    M5.Lcd.drawString("run Wi-Fi setup.", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 15);
+    M5.Lcd.drawString("Press Btn A...", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 45);
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+
+void drawWrappedText(String text, int x, int y, int maxWidth) {
+    if (text == NULL || text.length() == 0) return;
+
+    String currentLine = "";
+    String currentWord = "";
+
+    for (int i = 0; i < text.length(); i++) {
+        char c = text.charAt(i);
+        currentWord += c;
+
+        if (c == ' ' || c == '\n' || i == text.length() - 1) {
+            if (M5.Lcd.textWidth((currentLine + currentWord).c_str()) <= maxWidth) {
+                currentLine += currentWord;
+            } else {
+                M5.Lcd.setCursor(x, y);
+                String lineToPrint = currentLine;
+                lineToPrint.trim();
+                M5.Lcd.print(lineToPrint.c_str());
+                y += M5.Lcd.fontHeight();
+                currentLine = currentWord;
+            }
+            currentWord = "";
+
+            if (c == '\n') {
+                M5.Lcd.setCursor(x, y);
+                String lineToPrint = currentLine;
+                lineToPrint.trim();
+                M5.Lcd.print(lineToPrint.c_str());
+                y += M5.Lcd.fontHeight();
+                currentLine = "";
+            }
+        }
+    }
+
+    if (currentLine.length() > 0) {
+        M5.Lcd.setCursor(x, y);
+        String lineToPrint = currentLine;
+        lineToPrint.trim();
+        M5.Lcd.print(lineToPrint.c_str());
+    }
+}
+
+
+void paginateMessage(String text) {
+    totalPages = 0;
+    currentPage = 0;
+    for (int i = 0; i < MAX_PAGES; i++) pages[i] = "";
+
+    if (text.length() == 0) {
+        pages[0] = (const char*)u8"Ждем сообщения...";
+        totalPages = 1;
+        return;
+    }
+    
+    M5.Lcd.setFont(&fonts::efontCN_12); 
+    int maxWidth = 240 - 20;
+    const int maxLinesPerPage = 8;
+
+    String wrappedText = "";
+    String currentLine = "";
+    String currentWord = "";
+
+    for (int i = 0; i < text.length(); i++) {
+        char c = text.charAt(i);
+        currentWord += c;
+
+        if (c == ' ' || c == '\n' || i == text.length() - 1) {
+            if (M5.Lcd.textWidth((currentLine + currentWord).c_str()) > maxWidth) {
+                currentLine.trim();
+                wrappedText += currentLine + "\n";
+                currentLine = currentWord;
+            } else {
+                currentLine += currentWord;
+            }
+            
+            if (c == '\n') {
+               currentLine.trim();
+               wrappedText += currentLine + "\n";
+               currentLine = "";
+            }
+            currentWord = "";
+        }
+    }
+    currentLine.trim();
+    wrappedText += currentLine;
+
+    int lineCount = 0;
+    int pageStartIndex = 0;
+    for (int i = 0; i < wrappedText.length(); i++) {
+        if (wrappedText.charAt(i) == '\n' || i == wrappedText.length() - 1) {
+            lineCount++;
+            
+            if (lineCount == maxLinesPerPage || (i == wrappedText.length() - 1 && lineCount > 0)) {
+                if (totalPages < MAX_PAGES) {
+                    int pageEndIndex = (i == wrappedText.length() - 1) ? i + 1 : i;
+                    pages[totalPages] = wrappedText.substring(pageStartIndex, pageEndIndex);
+                    totalPages++;
+                    lineCount = 0;
+                    pageStartIndex = i + 1;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    if (totalPages == 0 && wrappedText.length() > 0) {
+        pages[0] = wrappedText;
+        totalPages = 1;
+    }
+}
+
+
+void drawMessageStandby() {
+    M5.Lcd.fillScreen(TFT_WHITE);
+    M5.Lcd.setTextColor(TFT_BLACK);
+    M5.Lcd.setRotation(1);
+
+    int padding = 10;
+    int maxWidth = M5.Lcd.width() - (padding * 2);
+    
+    M5.Lcd.setFont(&fonts::efontCN_12); 
+
+    if (totalPages > 0 && currentPage < totalPages) {
+        drawWrappedText(pages[currentPage], padding, padding, maxWidth);
+    } else {
+        drawWrappedText((const char*)u8"Ждем сообщения...", padding, padding, maxWidth);
+    }
+    
+    // --- Нижнее меню ---
+    int menuBarY = M5.Lcd.height() - 20;
+    M5.Lcd.fillRect(0, menuBarY, M5.Lcd.width(), 20, TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    M5.Lcd.setTextSize(1);
+    
+    // Счетчик страниц слева
+    char pageBuffer[20];
+    sprintf(pageBuffer, "%d/%d", currentPage + 1, totalPages);
+    M5.Lcd.setTextDatum(ML_DATUM);
+    M5.Lcd.drawString(pageBuffer, 5, menuBarY + 10);
+
+    // Элементы меню справа
+    int menuStartX = 50;
+    int totalMenuWidth = M5.Lcd.width() - menuStartX - 5;
+    int itemWidth = totalMenuWidth / numMessageMenu;
+
+    for (int i = 0; i < numMessageMenu; i++) {
+        int itemX = menuStartX + i * itemWidth;
+        if (i == messageMenuSelection) {
+            M5.Lcd.setTextColor(TFT_BLACK);
+            M5.Lcd.fillRect(itemX, menuBarY, itemWidth, 20, TFT_YELLOW);
+        } else {
+            M5.Lcd.setTextColor(TFT_WHITE);
+        }
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString(messageMenu[i], itemX + itemWidth / 2, menuBarY + 10);
+    }
+    
+    M5.Lcd.setTextDatum(TL_DATUM); // Сброс
+}
+
+void drawDiagnosticsScreen() {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    drawStatusBar();
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    M5.Lcd.setTextDatum(TL_DATUM);
+    M5.Lcd.setCursor(10, 30);
+    M5.Lcd.println("Network Diagnostics");
+    M5.Lcd.drawLine(10, 45, M5.Lcd.width() - 10, 45, TFT_DARKGREY);
+
+    M5.Lcd.setCursor(10, 60);
+    M5.Lcd.print("Internet (Google): ");
+    
+    if (diagStatusGoogle == "OK") {
+        M5.Lcd.setTextColor(TFT_GREEN);
+    } else if (diagStatusGoogle == "Failed") {
+        M5.Lcd.setTextColor(TFT_RED);
+    } else {
+        M5.Lcd.setTextColor(TFT_YELLOW);
+    }
+    M5.Lcd.println(diagStatusGoogle);
+    M5.Lcd.setTextColor(TFT_WHITE);
+
+    M5.Lcd.setCursor(10, 80);
+    M5.Lcd.print("Server (Your IP):  ");
+    
+    if (diagStatusServer == "OK") {
+        M5.Lcd.setTextColor(TFT_GREEN);
+    } else if (diagStatusServer == "Failed") {
+        M5.Lcd.setTextColor(TFT_RED);
+    } else {
+        M5.Lcd.setTextColor(TFT_YELLOW);
+    }
+    M5.Lcd.println(diagStatusServer);
+    M5.Lcd.setTextColor(TFT_WHITE);
+
+
+    M5.Lcd.setTextDatum(MC_DATUM);
+    M5.Lcd.drawString("Press B to go back", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+void drawGyroscopeScreen() {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    drawStatusBar();
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    M5.Lcd.setTextDatum(MC_DATUM);
+
+    if (isWifiConnected()) {
+        M5.Lcd.drawString("Web-server OK", M5.Lcd.width() / 2, 40);
+        M5.Lcd.setTextColor(TFT_YELLOW);
+        M5.Lcd.drawString(WiFi.localIP().toString(), M5.Lcd.width() / 2, 70);
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.drawString((const char*)u8"Откройте этот IP", M5.Lcd.width() / 2, 100);
+        M5.Lcd.drawString((const char*)u8"в браузере", M5.Lcd.width() / 2, 120);
+
+    } else {
+        M5.Lcd.setTextColor(TFT_RED);
+        M5.Lcd.drawString("Web-server OFF", M5.Lcd.width() / 2, 60);
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.drawString((const char*)u8"Подключитесь к Wi-Fi", M5.Lcd.width() / 2, 100);
+    }
+
+    M5.Lcd.drawString("Press B to go back", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+void drawStealthClock() {
+    M5.Lcd.setRotation(clockRotation); // Используем динамическую переменную для ориентации
+
+    if (isClockDarkTheme) {
+        M5.Lcd.fillScreen(TFT_BLACK);
+        M5.Lcd.setTextColor(TFT_DARKGREY);
+    } else {
+        M5.Lcd.fillScreen(TFT_WHITE);
+        M5.Lcd.setTextColor(TFT_BLACK);
+    }
+
+    struct tm timeinfo;
+    // Проверяем, что время синхронизировано (год > 2023)
+    if(!getLocalTime(&timeinfo, 10) || timeinfo.tm_year < 123){
+        M5.Lcd.setFont(&fonts::Font2);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString("Syncing...", M5.Lcd.width()/2, M5.Lcd.height()/2);
+        return;
+    }
+
+    char timeString[9];
+    strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
+    
+    M5.Lcd.setTextFont(7);
+    M5.Lcd.setTextDatum(MC_DATUM);
+    M5.Lcd.drawString(timeString, M5.Lcd.width() / 2, M5.Lcd.height() / 2);
+
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+
+void displayMenu() {
+  switch (menuMode) {
+    case MODE_MAIN_MENU:
+      M5.Lcd.setRotation(0);
+      drawMainMenu(mainMenu, numMainMenu);
+      break;
+    case MODE_WIFI_MENU:
+      M5.Lcd.setRotation(0);
+      drawWifiMenu();
+      break;
+    case MODE_WIFI_CONFIG:
+      drawWifiConfigScreen();
+      break;
+    case MODE_CONNECTING:
+      M5.Lcd.setRotation(0);
+      M5.Lcd.fillScreen(TFT_WHITE);
+      M5.Lcd.setTextColor(TFT_BLACK);
+      M5.Lcd.setFont(&fonts::efontCN_12); 
+      M5.Lcd.setTextDatum(MC_DATUM);
+      M5.Lcd.drawString("Connecting...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
+      M5.Lcd.setTextDatum(TL_DATUM);
+      break;
+    case MODE_TIME_SYNCING:
+      M5.Lcd.setRotation(0);
+      M5.Lcd.fillScreen(TFT_WHITE);
+      M5.Lcd.setTextColor(TFT_BLACK);
+      M5.Lcd.setFont(&fonts::efontCN_12);
+      M5.Lcd.setTextDatum(MC_DATUM);
+      M5.Lcd.drawString("Time Syncing...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
+      M5.Lcd.setTextDatum(TL_DATUM);
+      break;
+    case MODE_CONNECTION_FAILED:
+      drawConnectionFailedScreen();
+      break;
+    case MODE_MESSAGE_STANDBY:
+        drawMessageStandby();
+        break;
+    case MODE_VOICE_RECORDING:
+        M5.Lcd.setRotation(0);
+        M5.Lcd.fillScreen(TFT_BLACK);
+        drawStatusBar(); 
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setFont(&fonts::efontCN_12);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString((const char*)u8"Держите А для записи", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 10);
+        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
+        M5.Lcd.setTextDatum(TL_DATUM);
+        break;
+    case MODE_GEMINI_RECORDING:
+        M5.Lcd.setRotation(0);
+        M5.Lcd.fillScreen(TFT_BLACK);
+        drawStatusBar(); 
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setFont(&fonts::efontCN_12);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString((const char*)u8"Держите А для Gemini", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 10);
+        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
+        M5.Lcd.setTextDatum(TL_DATUM);
+        break;
+    case MODE_GEMINI_FOLLOWUP_RECORDING:
+        M5.Lcd.setRotation(0);
+        M5.Lcd.fillScreen(TFT_BLACK);
+        drawStatusBar(); 
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setFont(&fonts::efontCN_12);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString((const char*)u8"Держите А для вопроса", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 10);
+        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
+        M5.Lcd.setTextDatum(TL_DATUM);
+        break;
+    case MODE_DIAGNOSTICS:
+        M5.Lcd.setRotation(0);
+        drawDiagnosticsScreen();
+        break;
+    case MODE_GYROSCOPE:
+        M5.Lcd.setRotation(0);
+        drawGyroscopeScreen();
+        break;
+    case MODE_STEALTH_CLOCK:
+        drawStealthClock();
+        break;
+    default:
+      break;
+  }
+}

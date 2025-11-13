@@ -1,0 +1,107 @@
+#include "Net_GyroServer.h"
+#include "Net_WiFiManager.h"
+#include "Globals.h"
+#include <WebServer.h>
+
+// --- НОВЫЕ ФУНКЦИИ ДЛЯ ВЕБ-СЕРВЕРА ГИРОСКОПА ---
+
+const char* GYRO_HTML = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>M5-Nexus IMU Data</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: monospace; background-color: #1e1e1e; color: #d4d4d4; text-align: center; padding-top: 20px;}
+        .container { max-width: 400px; margin: 0 auto; padding: 20px; background-color: #252526; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        h1, h2 { color: #569cd6; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; text-align: left; margin-top: 20px;}
+        .data-item span { font-weight: bold; color: #9cdcfe; float: right; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>M5-Nexus IMU</h1>
+        <h2>Accelerometer (g)</h2>
+        <div class="data-grid">
+            <div class="data-item">Left/Right (X): <span id="ax">-</span></div>
+            <div class="data-item">Forward/Back (Y): <span id="ay">-</span></div>
+            <div class="data-item">Up/Down (Z): <span id="az">-</span></div>
+        </div>
+        <h2>Gyroscope (dps)</h2>
+        <div class="data-grid">
+            <div class="data-item">Pitch (X): <span id="gx">-</span></div>
+            <div class="data-item">Roll (Y): <span id="gy">-</span></div>
+            <div class="data-item">Yaw (Z): <span id="gz">-</span></div>
+        </div>
+    </div>
+    <script>
+        setInterval(async () => {
+            try {
+                const response = await fetch('/data');
+                const data = await response.json();
+                document.getElementById('ax').textContent = data.ax.toFixed(2);
+                document.getElementById('ay').textContent = data.ay.toFixed(2);
+                document.getElementById('az').textContent = data.az.toFixed(2);
+                document.getElementById('gx').textContent = data.gx.toFixed(2);
+                document.getElementById('gy').textContent = data.gy.toFixed(2);
+                document.getElementById('gz').textContent = data.gz.toFixed(2);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                document.getElementById('ax').textContent = 'Error';
+            }
+        }, 250);
+    </script>
+</body>
+</html>
+)rawliteral";
+
+void handleGyroRoot() {
+    server.send(200, "text/html", GYRO_HTML);
+}
+
+void handleGyroData() {
+    if (M5.Imu.update()) {
+        auto data = M5.Imu.getImuData();
+        
+        // Переназначаем оси для интуитивного соответствия экрану
+        // X: наклон влево/вправо -> IMU Y
+        // Y: наклон вперед/назад -> IMU -X
+        // Z: гравитация вверх/вниз -> IMU -Z
+        float ax = data.accel.y;
+        float ay = -data.accel.x;
+        float az = -data.accel.z;
+        float gx = data.gyro.y;
+        float gy = -data.gyro.x;
+        float gz = -data.gyro.z;
+
+        char jsonBuffer[200];
+        snprintf(jsonBuffer, sizeof(jsonBuffer), 
+                 "{\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f}",
+                 ax, ay, az, gx, gy, gz);
+        
+        server.send(200, "application/json", jsonBuffer);
+    } else {
+        server.send(503, "application/json", "{\"error\":\"IMU data not available\"}");
+    }
+}
+
+void startGyroServer() {
+    if (isWifiConnected()) {
+        server.on("/", HTTP_GET, handleGyroRoot);
+        server.on("/data", HTTP_GET, handleGyroData);
+        server.begin();
+        Serial.println("Gyroscope web server started.");
+    } else {
+        Serial.println("Cannot start gyro server, WiFi not connected.");
+    }
+}
+
+void stopGyroServer() {
+    server.stop();
+    Serial.println("Gyroscope web server stopped.");
+}
+
+void handleGyroServerClient() {
+    server.handleClient();
+}

@@ -1,0 +1,177 @@
+#include "Net_ApiClient.h"
+#include "Net_WiFiManager.h" // For isWifiConnected
+#include "Globals.h"
+#include "UI.h"
+#include "Networking.h" // For SERVER_ADDRESS
+#include <HTTPClient.h>
+
+
+// --- ПРОВЕРКА СООБЩЕНИЙ (УЛУЧШЕННАЯ ЛОГИКА) ---
+void checkForNewMessages() {
+    static unsigned long lastCheck = 0;
+    // Увеличим интервал до 5 секунд для большей стабильности
+    if (millis() - lastCheck < 5000) { 
+        return;
+    }
+    lastCheck = millis();
+
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        String serverUrl = String(SERVER_ADDRESS) + "/message";
+        http.begin(serverUrl);
+        http.setConnectTimeout(5000); // Увеличим таймаут подключения до 5 секунд
+        http.setTimeout(10000);      // Установим общий таймаут запроса на 10 секунд
+
+        int httpResponseCode = http.GET();
+
+        if (httpResponseCode == HTTP_CODE_OK) {
+            String payload = http.getString();
+            Serial.printf("Received new message: %s\n", payload.c_str());
+            receivedMessage = payload;
+            newMessageReceived = true;
+            messageTimestamp = millis();
+            paginateMessage(receivedMessage); 
+            displayMenu(); // Немедленно обновляем экран
+        } else if (httpResponseCode < 0) { // Логируем все отрицательные коды (ошибки)
+             // Добавляем более детальное сообщение об ошибке
+             Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
+        }
+        
+        http.end();
+    }
+}
+
+
+// --- ОТПРАВКА ГОЛОСА (НАДЕЖНАЯ ЛОГИКА С 3 ПОПЫТКАМИ) ---
+bool sendRecordedVoiceHTTP(uint8_t* audio_buffer, size_t buffer_len) {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected. Cannot send voice message.");
+        return false;
+    }
+
+    HTTPClient http;
+    String serverUrl = String(SERVER_ADDRESS) + "/voice";
+    
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        Serial.printf("Attempt %d: Sending voice message (%d bytes) to %s...\n", attempt, buffer_len, serverUrl.c_str());
+        
+        http.begin(serverUrl);
+        http.addHeader("Content-Type", "audio/wav");
+        http.setConnectTimeout(5000); // 5 сек на подключение
+        http.setTimeout(10000); // 10 сек на всю операцию
+
+        int httpResponseCode = http.POST(audio_buffer, buffer_len);
+
+        if (httpResponseCode == HTTP_CODE_OK) {
+            Serial.println("Voice message sent successfully.");
+            http.end();
+            return true;
+        } else {
+            Serial.printf("Attempt %d failed. HTTP Error code: %d\n", attempt, httpResponseCode);
+            http.end();
+            delay(500); // Небольшая задержка перед следующей попыткой
+        }
+    }
+
+    Serial.println("Failed to send voice message after all attempts.");
+    return false;
+}
+
+// --- ОТПРАВКА ГОЛОСА В GEMINI И ПОЛУЧЕНИЕ ОТВЕТА ---
+bool sendVoiceToGemini(uint8_t* audio_buffer, size_t buffer_len) {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected. Cannot send voice to Gemini.");
+        receivedMessage = "Error: WiFi not connected.";
+        paginateMessage(receivedMessage);
+        return false;
+    }
+
+    HTTPClient http;
+    String serverUrl = String(SERVER_ADDRESS) + "/gemini_voice";
+    
+    Serial.printf("Sending voice message to Gemini (%d bytes) via %s...\n", buffer_len, serverUrl.c_str());
+    
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "audio/wav");
+    http.setConnectTimeout(10000); // 10 сек на подключение
+    http.setTimeout(30000);      // 30 сек на всю операцию, Gemini может думать долго
+
+    int httpResponseCode = http.POST(audio_buffer, buffer_len);
+
+    if (httpResponseCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.printf("Received Gemini response: %s\n", payload.c_str());
+        
+        receivedMessage = payload;
+        messageTimestamp = millis();
+        paginateMessage(receivedMessage); 
+        
+        http.end();
+        return true;
+    } else {
+        Serial.printf("Gemini request failed. HTTP Error code: %d\n", httpResponseCode);
+        String errorPayload = http.getString();
+        Serial.printf("Error payload: %s\n", errorPayload.c_str());
+
+        receivedMessage = "Gemini Error: " + String(httpResponseCode) + "\n" + errorPayload;
+        messageTimestamp = millis();
+        paginateMessage(receivedMessage);
+        
+        http.end();
+        return false;
+    }
+}
+
+// --- ОТПРАВКА УТОЧНЯЮЩЕГО ВОПРОСА В GEMINI ---
+bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previous_response) {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected. Cannot send follow-up to Gemini.");
+        receivedMessage = "Error: WiFi not connected.";
+        paginateMessage(receivedMessage);
+        return false;
+    }
+
+    HTTPClient http;
+    String serverUrl = String(SERVER_ADDRESS) + "/gemini_followup"; // Новый эндпоинт
+    
+    Serial.printf("Sending follow-up to Gemini (%d bytes) via %s...\n", buffer_len, serverUrl.c_str());
+    
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "audio/wav");
+    http.addHeader("X-Previous-Response", previous_response); // Отправляем контекст в заголовке
+    http.setConnectTimeout(10000);
+    http.setTimeout(30000);
+
+    int httpResponseCode = http.POST(audio_buffer, buffer_len);
+
+    if (httpResponseCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.printf("Received Gemini follow-up response: %s\n", payload.c_str());
+        
+        receivedMessage = payload;
+        messageTimestamp = millis();
+        paginateMessage(receivedMessage); 
+        
+        http.end();
+        return true;
+    } else {
+        Serial.printf("Gemini follow-up request failed. HTTP Error code: %d\n", httpResponseCode);
+        String errorPayload = http.getString();
+        Serial.printf("Error payload: %s\n", errorPayload.c_str());
+
+        receivedMessage = "Gemini Error: " + String(httpResponseCode) + "\n" + errorPayload;
+        messageTimestamp = millis();
+        paginateMessage(receivedMessage);
+        
+        http.end();
+        return false;
+    }
+}
+
+
+void handleNetwork() {
+    // Only check for messages when in standby to avoid interrupting other modes
+    if (isWifiConnected() && menuMode == MODE_MESSAGE_STANDBY) {
+        checkForNewMessages();
+    }
+}
