@@ -22,8 +22,11 @@ const char* GYRO_HTML = R"rawliteral(
 
     <script type="module">
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/controls/OrbitControls.js';
+        import Stats from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/libs/stats.module.js';
 
-        let scene, camera, renderer, box;
+        let scene, camera, renderer, box, controls, stats;
+        let isUserControlling = false;
 
         function init() {
             // Scene
@@ -37,6 +40,16 @@ const char* GYRO_HTML = R"rawliteral(
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
+            
+            // Stats (FPS counter)
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.addEventListener('start', () => { isUserControlling = true; });
+            controls.addEventListener('end', () => { isUserControlling = false; });
 
             // Box (representing M5Stick) - Proportions adjusted to match screen ratio (135x240)
             const geometry = new THREE.BoxGeometry(1.35, 2.4, 0.6); 
@@ -66,6 +79,12 @@ const char* GYRO_HTML = R"rawliteral(
         }
 
         async function fetchData() {
+            // If user is dragging the camera, pause the IMU updates.
+            if (isUserControlling) {
+                setTimeout(fetchData, 100); // Check again in 100ms
+                return;
+            }
+
             try {
                 const response = await fetch('/data');
                 if (!response.ok) {
@@ -74,38 +93,20 @@ const char* GYRO_HTML = R"rawliteral(
                 const data = await response.json();
                 
                 // --- ENHANCED ORIENTATION LOGIC ---
-                // This approach is more robust as it prevents unintended spinning.
-
-                // 1. Get the normalized gravity vector from the IMU data.
-                //    'ax' and 'ay' components are negated to mirror the roll and pitch.
                 const gravity = new THREE.Vector3(-data.ax, -data.ay, data.az).normalize();
-
-                // 2. The model's Z-axis (screen face) should point opposite to gravity.
                 const modelZ = gravity.clone().negate();
-
-                // 3. Define a stable world "up" vector to orient against.
                 const worldUp = new THREE.Vector3(0, 1, 0);
-
-                // 4. Calculate the model's X-axis (right side) by crossing world up and model forward.
                 const modelX = new THREE.Vector3().crossVectors(worldUp, modelZ).normalize();
 
-                // 5. Handle the edge case where the device is pointing straight up or down (gimbal lock).
-                //    In this case, the cross product is near zero. We need a fallback.
                 if (modelX.lengthSq() < 0.001) {
-                    // If gravity is aligned with world Y, use world X as a stable reference for "right".
                     modelX.crossVectors(new THREE.Vector3(1, 0, 0), modelZ).normalize();
                 }
 
-                // 6. The model's Y-axis (top side) is now guaranteed to be orthogonal.
                 const modelY = new THREE.Vector3().crossVectors(modelZ, modelX);
-
-                // 7. Create the final rotation matrix from the calculated axes.
                 const rotationMatrix = new THREE.Matrix4().makeBasis(modelX, modelY, modelZ);
                 const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
                 
-                // 8. Slerp to the target for smooth animation. Factor reduced to 0.1 to reduce jitter.
                 box.quaternion.slerp(targetQuaternion, 0.1);
-
 
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
@@ -117,6 +118,8 @@ const char* GYRO_HTML = R"rawliteral(
 
         function animate() {
             requestAnimationFrame(animate);
+            controls.update(); // for damping
+            stats.update();
             renderer.render(scene, camera);
         }
 
