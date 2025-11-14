@@ -497,6 +497,7 @@ void displayMenu() {
         drawStealthClock();
         break;
     case MODE_BUZZER:
+    {
         M5.Lcd.setRotation(0);
         M5.Lcd.fillScreen(TFT_BLACK);
         drawStatusBar();
@@ -548,6 +549,7 @@ void displayMenu() {
         
         M5.Lcd.setTextDatum(TL_DATUM);
         break;
+    }
     default:
       break;
   }
