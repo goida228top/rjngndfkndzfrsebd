@@ -106,8 +106,8 @@ void loop() {
         case MODE_GEMINI_FOLLOWUP_RECORDING:
             handleGeminiFollowupRecording();
             break;
-        case MODE_VOICE_TO_BUZZER:
-            handleVoiceToBuzzer();
+        case MODE_BUZZER:
+            handleBuzzerMode();
             break;
         default:
             // No special loop logic for other modes

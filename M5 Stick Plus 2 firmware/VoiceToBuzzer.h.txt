@@ -1,6 +1,6 @@
 #ifndef VOICE_TO_BUZZER_H
 #define VOICE_TO_BUZZER_H
 
-void handleVoiceToBuzzer();
+void handleBuzzerMode();
 
 #endif // VOICE_TO_BUZZER_H

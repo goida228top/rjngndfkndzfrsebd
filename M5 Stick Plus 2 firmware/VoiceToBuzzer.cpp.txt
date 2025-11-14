@@ -1,130 +1,59 @@
 #include "VoiceToBuzzer.h"
 #include <M5StickCPlus2.h>
-#include "Globals.h"
-#include "UI.h"
-#include "arduinoFFT.h"
 
-// --- НАСТРОЙКИ FFT ---
-#define MIC_SAMPLE_RATE 8000
-#define FFT_SAMPLES 256 // Должно быть степенью 2
-#define AMPLITUDE_THRESHOLD 200000.0 // Увеличено для отсечения шума (было 10000.0)
-#define MIN_FREQ 80.0    // Минимальная частота для человеческого голоса (Hz)
-#define MAX_FREQ 1200.0  // Максимальная частота для человеческого голоса (Hz)
-#define PLAYBACK_CHUNK_DELAY (FFT_SAMPLES * 1000 / MIC_SAMPLE_RATE) // Задержка для каждого блока FFT
+// --- НАСТРОЙКИ ТОНОВ ---
+const int FREQ_A = 523; // C5
+const int FREQ_B = 1046; // C6
 
-// Буферы для FFT
-double vReal[FFT_SAMPLES];
-double vImag[FFT_SAMPLES];
-arduinoFFT FFT = arduinoFFT(vReal, vImag, FFT_SAMPLES, MIC_SAMPLE_RATE);
+void handleBuzzerMode() {
+    // Статические переменные для отслеживания состояния кнопок/зуммера,
+    // чтобы звук не включался/выключался в каждом цикле.
+    static bool tone_a_is_playing = false;
+    static bool tone_b_is_playing = false;
 
-// Обрабатывает и воспроизводит записанный звук
-void processAndPlayRecording() {
-    M5.Lcd.fillScreen(TFT_BLUE);
-    M5.Lcd.setTextDatum(MC_DATUM);
-    M5.Lcd.drawString((const char*)u8"Воспроизведение...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
-    Serial.println("Starting playback of recorded audio as tones...");
-
-    // Проходим по всей записи блоками размером с FFT_SAMPLES
-    for (size_t offset = 0; offset + (FFT_SAMPLES * sizeof(int16_t)) <= recorded_bytes; offset += (FFT_SAMPLES * sizeof(int16_t))) {
-        M5.update(); // Проверяем нажатие кнопок для прерывания
-        if (M5.BtnB.wasPressed()) {
-             Serial.println("Playback interrupted by user.");
-             break;
-        }
-
-        // 1. Подготовка блока данных для FFT
-        int16_t* chunk_start = (int16_t*)(rec_data + offset);
-        for (int i = 0; i < FFT_SAMPLES; i++) {
-            vReal[i] = chunk_start[i];
-            vImag[i] = 0.0;
-        }
-
-        // 2. Выполнение FFT
-        FFT.DCRemoval(); // Удаляем DC-смещение для более чистого анализа
-        FFT.Windowing(FFT_WIN_TYP_HAMMING, FFT_FORWARD);
-        FFT.Compute(FFT_FORWARD);
-        FFT.ComplexToMagnitude();
-
-        // 3. Поиск пиковой частоты в блоке
-        double peak_amplitude = 0;
-        double peak_frequency = 0;
-        for (int i = 2; i < (FFT_SAMPLES / 2); i++) { // Начинаем с i=2, чтобы отбросить DC
-            double freq = (double)i * (double)MIC_SAMPLE_RATE / (double)FFT_SAMPLES;
-            if (freq >= MIN_FREQ && freq <= MAX_FREQ) {
-                if (vReal[i] > peak_amplitude) {
-                    peak_amplitude = vReal[i];
-                    peak_frequency = freq;
-                }
-            }
-        }
-
-        // 4. Воспроизведение тона или тишины
-        if (peak_amplitude > AMPLITUDE_THRESHOLD) {
-            M5.Speaker.tone(peak_frequency);
-        } else {
-            M5.Speaker.stop();
-        }
-
-        // 5. Задержка на время, равное длительности блока
-        delay(PLAYBACK_CHUNK_DELAY);
-    }
-
-    M5.Speaker.stop(); // Гарантированно выключаем звук в конце
-    Serial.println("Playback finished.");
-}
-
-void handleVoiceToBuzzer() {
-    static bool isRecording = false;
-    bool stopAndProcess = false;
-
-    // Проверка на начало записи (кнопка А зажата)
+    // --- ОБРАБОТКА КНОПКИ A (БОЛЬШАЯ) ---
     if (M5.BtnA.isPressed()) {
-        if (!isRecording) {
-            // Начинаем новую запись
-            isRecording = true;
-            recorded_bytes = 0;
-            M5.Mic.begin();
-            M5.Lcd.fillScreen(TFT_RED);
-            M5.Lcd.setTextDatum(MC_DATUM);
-            M5.Lcd.drawString((const char*)u8"Запись...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
-            Serial.println("Buzzer recording started...");
+        if (!tone_a_is_playing) {
+            M5.Speaker.stop(); // Останавливаем любой другой звук
+            M5.Speaker.tone(FREQ_A);
+            tone_a_is_playing = true;
+            tone_b_is_playing = false; // A имеет приоритет
         }
-
-        // Продолжаем запись, пока есть место в буфере
-        if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 1024;
-            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
-                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
-            }
-            
-            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
-                recorded_bytes += chunk_size;
-            }
-        } else {
-            // Буфер полон, останавливаем запись автоматически
-            stopAndProcess = true;
+    } else {
+        if (tone_a_is_playing) {
+            M5.Speaker.stop();
+            tone_a_is_playing = false;
         }
-    } else if (isRecording) {
-        // Кнопку отпустили, останавливаем запись
-        stopAndProcess = true;
     }
 
-    // Если запись остановлена, обрабатываем результат
-    if (stopAndProcess) {
-        isRecording = false;
-        M5.Mic.end();
-        Serial.printf("Buzzer recording stopped. Total bytes: %d\n", recorded_bytes);
-
-        if (recorded_bytes > FFT_SAMPLES * sizeof(int16_t)) { // Проверяем, что записан хотя бы один блок
-            processAndPlayRecording();
+    // --- ОБРАБОТКА КНОПКИ B (СБОКУ) ---
+    // Сработает, только если кнопка А не зажата
+    if (!tone_a_is_playing) {
+        if (M5.BtnB.isPressed()) {
+            if (!tone_b_is_playing) {
+                M5.Speaker.stop();
+                M5.Speaker.tone(FREQ_B);
+                tone_b_is_playing = true;
+            }
         } else {
-            M5.Lcd.fillScreen(TFT_ORANGE);
-            M5.Lcd.setTextDatum(MC_DATUM);
-            M5.Lcd.drawString((const char*)u8"Слишком коротко", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
-            delay(1500);
+            if (tone_b_is_playing) {
+                M5.Speaker.stop();
+                tone_b_is_playing = false;
+            }
         }
+    }
 
-        // Возвращаемся на экран ожидания
-        displayMenu();
+    // --- ОБРАБОТКА КНОПКИ PWR (ПИТАНИЕ) - КОРОТКОЕ НАЖАТИЕ ---
+    if (M5.BtnPWR.wasPressed()) {
+        // Останавливаем текущие тона, чтобы проиграть эффект
+        if (tone_a_is_playing || tone_b_is_playing) {
+             M5.Speaker.stop();
+             tone_a_is_playing = false;
+             tone_b_is_playing = false;
+        }
+        // Проигрываем короткий "чирп"
+        M5.Speaker.tone(1500, 100); // Частота 1500 Гц на 100 мс
+        // После этого, если другие кнопки все еще зажаты,
+        // их звук возобновится в следующем цикле loop().
     }
 }

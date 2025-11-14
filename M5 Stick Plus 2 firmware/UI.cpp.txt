@@ -495,15 +495,24 @@ void displayMenu() {
     case MODE_STEALTH_CLOCK:
         drawStealthClock();
         break;
-    case MODE_VOICE_TO_BUZZER:
+    case MODE_BUZZER:
         M5.Lcd.setRotation(0);
         M5.Lcd.fillScreen(TFT_BLACK);
         drawStatusBar();
         M5.Lcd.setTextColor(TFT_WHITE);
         M5.Lcd.setFont(&fonts::efontCN_12);
         M5.Lcd.setTextDatum(MC_DATUM);
-        M5.Lcd.drawString((const char*)u8"Держите А для записи", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 10);
-        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
+
+        M5.Lcd.drawString((const char*)u8"РЕЖИМ ЗУМЕРА", M5.Lcd.width() / 2, 40);
+
+        M5.Lcd.setTextDatum(TL_DATUM);
+        M5.Lcd.drawString((const char*)u8"A (большая): Низкий тон", 20, 70);
+        M5.Lcd.drawString((const char*)u8"B (сбоку): Высокий тон", 20, 90);
+        M5.Lcd.drawString((const char*)u8"PWR (нажать): Эффект", 20, 110);
+        
+        M5.Lcd.setTextColor(TFT_YELLOW);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString((const char*)u8"Перезагрузите для выхода", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
         M5.Lcd.setTextDatum(TL_DATUM);
         break;
     default:

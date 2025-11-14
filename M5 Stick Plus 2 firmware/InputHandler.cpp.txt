@@ -39,8 +39,8 @@ void handleInput() {
                         startGyroServer();
                         displayMenu();
                         break;
-                    case 5: // Голос в Зумер
-                        setMenuMode(MODE_VOICE_TO_BUZZER);
+                    case 5: // Зумер
+                        setMenuMode(MODE_BUZZER);
                         displayMenu();
                         break;
                     case 6: // Диагностика
@@ -153,13 +153,6 @@ void handleInput() {
                 displayMenu();
                 break;
              case MODE_DIAGNOSTICS:
-                setMenuMode(MODE_MAIN_MENU);
-                displayMenu();
-                break;
-             case MODE_VOICE_TO_BUZZER:
-                // При выходе выключаем микрофон и зуммер
-                M5.Mic.end();
-                M5.Speaker.stop();
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();
                 break;
