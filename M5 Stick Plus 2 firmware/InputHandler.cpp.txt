@@ -3,6 +3,7 @@
 #include "UI.h"
 #include "Networking.h" // for start/stop gyro/config
 #include "WavHelper.h"
+#include "VoiceToBuzzer.h" // Для нового режима
 
 void handleInput() {
     // --- ОБРАБОТКА ВВОДА В ЗАВИСИМОСТИ ОТ РЕЖИМА ---
@@ -38,12 +39,16 @@ void handleInput() {
                         startGyroServer();
                         displayMenu();
                         break;
-                    case 5: // Диагностика
+                    case 5: // Голос в Зумер
+                        setMenuMode(MODE_VOICE_TO_BUZZER);
+                        displayMenu();
+                        break;
+                    case 6: // Диагностика
                         setMenuMode(MODE_DIAGNOSTICS);
                         displayMenu();
                         runNetworkDiagnostics();
                         break; 
-                    case 6: M5.Power.powerOff(); break; // Выключение
+                    case 7: M5.Power.powerOff(); break; // Выключение
                 }
                 break;
             case MODE_WIFI_MENU:
@@ -148,6 +153,13 @@ void handleInput() {
                 displayMenu();
                 break;
              case MODE_DIAGNOSTICS:
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                break;
+             case MODE_VOICE_TO_BUZZER:
+                // При выходе выключаем микрофон и зуммер
+                M5.Mic.end();
+                M5.Beep.noTone();
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();
                 break;

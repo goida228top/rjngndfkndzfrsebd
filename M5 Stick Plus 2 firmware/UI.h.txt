@@ -17,6 +17,7 @@ void displayMenu();
 void resetUIState();
 void paginateMessage(String text);
 void drawStatusBar();
+void drawVoiceToBuzzerScreen(float frequency, float amplitude);
 
 
 #endif // UI_H

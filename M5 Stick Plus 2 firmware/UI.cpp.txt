@@ -92,6 +92,11 @@ void drawMainMenu(const char* menuItems[], int itemCount, int yOffset = 30) {
     int y = yOffset;
     int lineHeight = 18; // Уменьшим, чтобы влезло
 
+    // --- ИСПРАВЛЕНИЕ: МЕНЮ СДВИНУЛОСЬ ИЗ-ЗА НОВОГО ПУНКТА ---
+    // Сделаем более динамический расчет
+    int totalMenuHeight = itemCount * lineHeight;
+    y = (M5.Lcd.height() - totalMenuHeight) / 2 + 10; // Центрируем по вертикали со смещением от статус-бара
+
     for (int i = 0; i < itemCount; i++) {
         if (i == selectedItem) {
             M5.Lcd.fillRect(0, y - 4, M5.Lcd.width(), lineHeight, TFT_BLACK);
@@ -409,6 +414,20 @@ void drawStealthClock() {
     M5.Lcd.setTextDatum(TL_DATUM);
 }
 
+void drawVoiceToBuzzerScreen(float frequency, float amplitude) {
+    M5.Lcd.fillRect(20, 30, M5.Lcd.width() - 40, 100, TFT_BLACK); // Очищаем только область данных
+
+    M5.Lcd.setTextColor(TFT_CYAN);
+    M5.Lcd.drawString("Freq:", 30, 60);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.drawString(String(frequency, 1) + " Hz", 80, 60);
+
+    M5.Lcd.setTextColor(TFT_MAGENTA);
+    M5.Lcd.drawString("Ampl:", 30, 90);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.drawString(String(amplitude, 1), 80, 90);
+}
+
 
 void displayMenu() {
   switch (menuMode) {
@@ -490,6 +509,19 @@ void displayMenu() {
         break;
     case MODE_STEALTH_CLOCK:
         drawStealthClock();
+        break;
+    case MODE_VOICE_TO_BUZZER:
+        M5.Lcd.setRotation(0);
+        M5.Lcd.fillScreen(TFT_BLACK);
+        drawStatusBar();
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setFont(&fonts::efontCN_12);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString((const char*)u8"Говорите в микрофон", M5.Lcd.width() / 2, 40);
+        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+        M5.Lcd.setTextDatum(TL_DATUM);
+        // Начальное состояние данных
+        drawVoiceToBuzzerScreen(0.0, 0.0);
         break;
     default:
       break;

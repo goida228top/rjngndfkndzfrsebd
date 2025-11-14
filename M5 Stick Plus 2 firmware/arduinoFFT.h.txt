@@ -1,0 +1,66 @@
+/*
+ * arduinoFFT.h
+ *
+ *  Copyright (c) 2018.  Enrique Albertos
+ *
+ *  This file is part of arduinoFFT.
+ *
+ *  arduinoFFT is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  arduinoFFT is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with arduinoFFT.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#ifndef arduinoFFT_h
+#define arduinoFFT_h
+
+#include "Arduino.h"
+
+#define FFT_LIB_VERSION "1.5.6"
+
+enum fft_window_t {
+	FFT_WIN_TYP_RECTANGLE, /* rectangle (Box car) */
+	FFT_WIN_TYP_HAMMING, /* hamming */
+	FFT_WIN_TYP_HANN, /* hann */
+	FFT_WIN_TYP_TRIANGLE, /* triangle (Bartlett) */
+	FFT_WIN_TYP_NUTTALL, /* nuttall */
+	FFT_WIN_TYP_BLACKMAN, /* blackman */
+	FFT_WIN_TYP_BLACKMAN_NUTTALL, /* blackman nuttall */
+	FFT_WIN_TYP_BLACKMAN_HARRIS, /* blackman harris*/
+	FFT_WIN_TYP_FLT_TOP, /* flat top */
+	FFT_WIN_TYP_WELCH /* welch */
+};
+
+enum fft_direction_t {
+	FFT_FORWARD, /* Forward FFT */
+	FFT_REVERSE /* Reverse FFT */
+};
+
+class arduinoFFT {
+public:
+	arduinoFFT(void);
+	arduinoFFT(double *vReal, double *vImag, uint16_t samples, double samplingFrequency);
+	void ComplexToMagnitude(void);
+	void Compute(fft_direction_t dir);
+	void DCRemoval(void);
+	double MajorPeak(void);
+	void Reorder(void);
+	void Windowing(fft_window_t windowType, fft_direction_t dir);
+private:
+	void Swap(double *x, double *y);
+	uint16_t _samples;
+	double _samplingFrequency;
+	double *_vReal;
+	double *_vImag;
+};
+
+#endif

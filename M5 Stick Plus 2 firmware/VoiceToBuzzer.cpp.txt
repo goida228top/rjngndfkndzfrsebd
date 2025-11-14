@@ -1,0 +1,83 @@
+#include "VoiceToBuzzer.h"
+#include <M5StickCPlus2.h>
+#include "Globals.h"
+#include "UI.h"
+#include "arduinoFFT.h"
+
+// --- НАСТРОЙКИ FFT ---
+#define MIC_SAMPLE_RATE 8000
+#define FFT_SAMPLES 256 // Должно быть степенью 2
+#define AMPLITUDE_THRESHOLD 10.0 // Порог "громкости", чтобы не реагировать на шум
+#define MIN_FREQ 80.0    // Минимальная частота для человеческого голоса (Hz)
+#define MAX_FREQ 1200.0  // Максимальная частота для человеческого голоса (Hz)
+
+// Буферы для FFT
+int16_t mic_buffer[FFT_SAMPLES];
+double vReal[FFT_SAMPLES];
+double vImag[FFT_SAMPLES];
+
+arduinoFFT FFT = arduinoFFT(vReal, vImag, FFT_SAMPLES, MIC_SAMPLE_RATE);
+
+void handleVoiceToBuzzer() {
+    static bool isMicInitialized = false;
+    if (!isMicInitialized) {
+        M5.Mic.begin();
+        isMicInitialized = true;
+        Serial.println("VoiceToBuzzer: Mic Initialized.");
+    }
+
+    // 1. Запись короткого сэмпла
+    size_t bytes_read = M5.Mic.record( (uint8_t*)mic_buffer, FFT_SAMPLES * sizeof(int16_t), MIC_SAMPLE_RATE);
+    
+    if (bytes_read == 0) {
+        return; // Ничего не прочитано
+    }
+
+    // 2. Подготовка данных для FFT
+    for (int i = 0; i < FFT_SAMPLES; i++) {
+        vReal[i] = mic_buffer[i]; // Используем сырые 16-битные данные
+        vImag[i] = 0.0;
+    }
+
+    // 3. Выполнение FFT
+    FFT.Windowing(FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+    FFT.Compute(FFT_FORWARD);
+    FFT.ComplexToMagnitude();
+
+    // 4. Поиск пиковой частоты
+    double peak_amplitude = 0;
+    double peak_frequency = 0;
+
+    for (int i = 2; i < (FFT_SAMPLES / 2); i++) { // Начинаем с i=2, чтобы отбросить DC смещение
+        double freq = (double)i * (double)MIC_SAMPLE_RATE / (double)FFT_SAMPLES;
+        
+        // Ограничиваем диапазон частот голосом
+        if (freq >= MIN_FREQ && freq <= MAX_FREQ) {
+            if (vReal[i] > peak_amplitude) {
+                peak_amplitude = vReal[i];
+                peak_frequency = freq;
+            }
+        }
+    }
+    
+    // Нормализуем амплитуду для наглядности (эмпирическое значение)
+    float display_amplitude = peak_amplitude / 1000.0; 
+
+    // 5. Воспроизведение на зуммере
+    if (display_amplitude > AMPLITUDE_THRESHOLD) {
+        M5.Beep.tone(peak_frequency);
+    } else {
+        M5.Beep.noTone();
+        peak_frequency = 0; // Сбрасываем частоту, если тихо
+    }
+    
+    // 6. Обновление экрана
+    drawVoiceToBuzzerScreen(peak_frequency, display_amplitude);
+
+    // Логирование для отладки
+    static unsigned long lastLogTime = 0;
+    if (millis() - lastLogTime > 200) {
+        Serial.printf("Peak Freq: %.1f Hz, Amplitude: %.1f\n", peak_frequency, display_amplitude);
+        lastLogTime = millis();
+    }
+}
