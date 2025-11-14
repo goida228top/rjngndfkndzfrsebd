@@ -414,21 +414,6 @@ void drawStealthClock() {
     M5.Lcd.setTextDatum(TL_DATUM);
 }
 
-void drawVoiceToBuzzerScreen(float frequency, float amplitude) {
-    M5.Lcd.fillRect(20, 30, M5.Lcd.width() - 40, 100, TFT_BLACK); // Очищаем только область данных
-
-    M5.Lcd.setTextColor(TFT_CYAN);
-    M5.Lcd.drawString("Freq:", 30, 60);
-    M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.drawString(String(frequency, 1) + " Hz", 80, 60);
-
-    M5.Lcd.setTextColor(TFT_MAGENTA);
-    M5.Lcd.drawString("Ampl:", 30, 90);
-    M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.drawString(String(amplitude, 1), 80, 90);
-}
-
-
 void displayMenu() {
   switch (menuMode) {
     case MODE_MAIN_MENU:
@@ -517,11 +502,9 @@ void displayMenu() {
         M5.Lcd.setTextColor(TFT_WHITE);
         M5.Lcd.setFont(&fonts::efontCN_12);
         M5.Lcd.setTextDatum(MC_DATUM);
-        M5.Lcd.drawString((const char*)u8"Говорите в микрофон", M5.Lcd.width() / 2, 40);
-        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+        M5.Lcd.drawString((const char*)u8"Держите А для записи", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 10);
+        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
         M5.Lcd.setTextDatum(TL_DATUM);
-        // Начальное состояние данных
-        drawVoiceToBuzzerScreen(0.0, 0.0);
         break;
     default:
       break;
