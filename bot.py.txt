@@ -98,6 +98,49 @@ def handle_gemini_voice():
         logger.error(f"Error calling Gemini API: {e}", exc_info=True)
         return f"Error: Failed to process request with Gemini API", 500
 
+@flask_app.route('/google_search', methods=['POST'])
+def handle_google_search():
+    if not gemini_model:
+        logger.error("Gemini model not initialized, cannot process request.")
+        return "Error: Gemini model not initialized on server", 503
+
+    audio_data = request.get_data()
+    if not audio_data:
+        return "Error: No audio data received", 400
+    
+    logger.info(f"Received {len(audio_data)} bytes for Google Search.")
+    
+    try:
+        prompt = "Ответь на этот голосовой запрос, используя Google Поиск. Дай прямой и краткий ответ по существу."
+        audio_part = {'mime_type': 'audio/wav', 'data': audio_data}
+        
+        # Используем инструмент Google Search
+        tools = [{'google_search': {}}]
+        
+        request_options = {"timeout": 120}
+        
+        response = gemini_model.generate_content(
+            contents=[prompt, audio_part],
+            tools=tools,
+            request_options=request_options
+        )
+        
+        # Логируем метаданные, как того требуют правила
+        try:
+            if response.candidates[0].grounding_metadata:
+                chunks = response.candidates[0].grounding_metadata.grounding_chunks
+                urls = [chunk.web.uri for chunk in chunks if chunk.web]
+                logger.info(f"Google Search sources: {urls}")
+        except (AttributeError, IndexError) as e:
+            logger.warning(f"Could not extract grounding metadata: {e}")
+
+        logger.info("Successfully received response from Google Search via Gemini.")
+        return response.text, 200
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API for Google Search: {e}", exc_info=True)
+        return f"Error: Failed to process request with Gemini API", 500
+
 
 @flask_app.route('/gemini_followup', methods=['POST'])
 def handle_gemini_followup():

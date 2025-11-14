@@ -7,6 +7,7 @@ void handleNetwork(); // The poller
 void checkForNewMessages();
 bool sendRecordedVoiceHTTP(uint8_t* audio_buffer, size_t buffer_len);
 bool sendVoiceToGemini(uint8_t* audio_buffer, size_t buffer_len);
+bool sendVoiceToGoogleSearch(uint8_t* audio_buffer, size_t buffer_len);
 bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previous_response);
 
 #endif // NET_API_CLIENT_H

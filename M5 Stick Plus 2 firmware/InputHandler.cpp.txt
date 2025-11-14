@@ -22,33 +22,38 @@ void handleInput() {
                         setMenuMode(MODE_GEMINI_RECORDING);
                         displayMenu();
                         break;
-                    case 2: // Голосовые С
+                    case 2: // Google Поиск
+                        isFirstRecording = true;
+                        setMenuMode(MODE_GOOGLE_SEARCH_RECORDING);
+                        displayMenu();
+                        break;
+                    case 3: // Голосовые С
                         isFirstRecording = true;
                         setMenuMode(MODE_VOICE_RECORDING);
                         displayMenu();
                         break;
-                    case 3: // Сообщения
+                    case 4: // Сообщения
                         paginateMessage(receivedMessage);
                         newMessageReceived = false;
                         messageTimestamp = millis();
                         setMenuMode(MODE_MESSAGE_STANDBY);
                         displayMenu();
                         break;
-                    case 4: // Гироскоп
+                    case 5: // Гироскоп
                         setMenuMode(MODE_GYROSCOPE);
                         startGyroServer();
                         displayMenu();
                         break;
-                    case 5: // Зумер
+                    case 6: // Зумер
                         setMenuMode(MODE_BUZZER);
                         displayMenu();
                         break;
-                    case 6: // Диагностика
+                    case 7: // Диагностика
                         setMenuMode(MODE_DIAGNOSTICS);
                         displayMenu();
                         runNetworkDiagnostics();
                         break; 
-                    case 7: M5.Power.powerOff(); break; // Выключение
+                    case 8: M5.Power.powerOff(); break; // Выключение
                 }
                 break;
             case MODE_WIFI_MENU:
@@ -143,6 +148,7 @@ void handleInput() {
                 displayMenu();
                 break;
              case MODE_GEMINI_RECORDING:
+             case MODE_GOOGLE_SEARCH_RECORDING:
              case MODE_GEMINI_FOLLOWUP_RECORDING:
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();

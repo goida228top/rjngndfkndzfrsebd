@@ -5,6 +5,7 @@
 const char* mainMenu[] = {
     (const char*)u8"Wi-Fi", 
     (const char*)u8"Gemini Ассистент",
+    (const char*)u8"Google Поиск",
     (const char*)u8"Голосовые С",
     (const char*)u8"Сообщения", 
     (const char*)u8"Гироскоп",

@@ -103,6 +103,9 @@ void loop() {
         case MODE_GEMINI_RECORDING:
             handleGeminiRecording();
             break;
+        case MODE_GOOGLE_SEARCH_RECORDING:
+            handleGoogleSearchRecording();
+            break;
         case MODE_GEMINI_FOLLOWUP_RECORDING:
             handleGeminiFollowupRecording();
             break;

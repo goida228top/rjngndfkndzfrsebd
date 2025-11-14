@@ -474,6 +474,17 @@ void displayMenu() {
         M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
         M5.Lcd.setTextDatum(TL_DATUM);
         break;
+    case MODE_GOOGLE_SEARCH_RECORDING:
+        M5.Lcd.setRotation(0);
+        M5.Lcd.fillScreen(TFT_BLACK);
+        drawStatusBar(); 
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setFont(&fonts::efontCN_12);
+        M5.Lcd.setTextDatum(MC_DATUM);
+        M5.Lcd.drawString((const char*)u8"Держите А для Google", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 10);
+        M5.Lcd.drawString((const char*)u8"Нажмите B для выхода", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 30);
+        M5.Lcd.setTextDatum(TL_DATUM);
+        break;
     case MODE_GEMINI_FOLLOWUP_RECORDING:
         M5.Lcd.setRotation(0);
         M5.Lcd.fillScreen(TFT_BLACK);

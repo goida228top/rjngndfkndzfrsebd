@@ -36,14 +36,6 @@ const char* GYRO_HTML = R"rawliteral(
         let scene, camera, renderer, box, controls, stats;
         let isUserControlling = false;
 
-        // --- Sensor Fusion and Physics State ---
-        let deviceQuaternion = new THREE.Quaternion();
-        let devicePosition = new THREE.Vector3();
-        let deviceVelocity = new THREE.Vector3();
-        let lastTimestamp = performance.now();
-        const dps_to_rad = Math.PI / 180.0;
-
-
         function init() {
             // Scene
             scene = new THREE.Scene();
@@ -95,6 +87,12 @@ const char* GYRO_HTML = R"rawliteral(
         }
 
         async function fetchData() {
+            // If user is dragging the camera, pause the IMU updates.
+            if (isUserControlling) {
+                setTimeout(fetchData, 100); // Check again in 100ms
+                return;
+            }
+
             try {
                 const response = await fetch('/data');
                 if (!response.ok) {
@@ -102,72 +100,28 @@ const char* GYRO_HTML = R"rawliteral(
                 }
                 const data = await response.json();
                 
-                if (isUserControlling) {
-                    // When user is controlling, reset physics to avoid jumps when releasing
-                    lastTimestamp = performance.now();
-                    deviceVelocity.set(0, 0, 0);
-                } else {
-                    const now = performance.now();
-                    const dt = Math.min((now - lastTimestamp) / 1000.0, 0.1); // Cap dt to avoid physics explosion
-                    lastTimestamp = now;
+                // --- ENHANCED ORIENTATION LOGIC ---
+                const gravity = new THREE.Vector3(-data.ax, -data.ay, data.az).normalize();
+                const modelZ = gravity.clone().negate();
+                const worldUp = new THREE.Vector3(0, 1, 0);
+                const modelX = new THREE.Vector3().crossVectors(worldUp, modelZ).normalize();
 
-                    // --- 1. ORIENTATION (Sensor Fusion: Gyro + Accelerometer) ---
-                    
-                    // Gyroscope update (prediction) - multiply by dt to get delta angle
-                    const gx = -data.gx * dps_to_rad * dt;
-                    const gy = -data.gy * dps_to_rad * dt;
-                    const gz =  data.gz * dps_to_rad * dt;
-                    const deltaQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(gy, gx, gz, 'YXZ'));
-                    deviceQuaternion.premultiply(deltaQuat);
-                    
-                    // Accelerometer correction
-                    const accelVec = new THREE.Vector3(-data.ax, -data.ay, data.az);
-                    if (accelVec.lengthSq() > 0.5) { // Only correct if accel is near 1G
-                        const gravity = accelVec.clone().normalize();
-                        const modelZ = gravity.clone().negate();
-                        const worldUp = new THREE.Vector3(0, 1, 0);
-                        const modelX = new THREE.Vector3().crossVectors(worldUp, modelZ).normalize();
-                        if (modelX.lengthSq() < 0.001) { // Gimbal lock check
-                            modelX.crossVectors(new THREE.Vector3(1, 0, 0), modelZ).normalize();
-                        }
-                        const modelY = new THREE.Vector3().crossVectors(modelZ, modelX);
-                        const rotationMatrix = new THREE.Matrix4().makeBasis(modelX, modelY, modelZ);
-                        const accelQuat = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
-                        deviceQuaternion.slerp(accelQuat, 0.05); // Fuse via slerp
-                    }
-                    deviceQuaternion.normalize();
-                    box.quaternion.copy(deviceQuaternion);
-
-                    // --- 2. POSITION (Double integration of linear acceleration) ---
-
-                    const worldGravity = new THREE.Vector3(0, -1, 0); // Gravity vector in world space
-                    const localGravity = worldGravity.clone().applyQuaternion(deviceQuaternion.clone().invert());
-                    const linearAccel = accelVec.clone().sub(localGravity);
-                    const worldLinearAccel = linearAccel.clone().applyQuaternion(deviceQuaternion);
-                    
-                    const ACCEL_SCALE = 3.0;
-                    const SPRING_STIFFNESS = 25.0;
-                    const DAMPING = 5.0;
-
-                    let force = worldLinearAccel.multiplyScalar(ACCEL_SCALE);
-                    force.add(devicePosition.clone().multiplyScalar(-SPRING_STIFFNESS)); // Spring force
-                    force.add(deviceVelocity.clone().multiplyScalar(-DAMPING));       // Damping force
-                    
-                    deviceVelocity.add(force.clone().multiplyScalar(dt));
-                    devicePosition.add(deviceVelocity.clone().multiplyScalar(dt));
-
-                    const MAX_POS = 1.0;
-                    if (devicePosition.length() > MAX_POS) {
-                         devicePosition.normalize().multiplyScalar(MAX_POS);
-                         deviceVelocity.set(0,0,0);
-                    }
-                    box.position.copy(devicePosition);
+                if (modelX.lengthSq() < 0.001) {
+                    modelX.crossVectors(new THREE.Vector3(1, 0, 0), modelZ).normalize();
                 }
+
+                const modelY = new THREE.Vector3().crossVectors(modelZ, modelX);
+                const rotationMatrix = new THREE.Matrix4().makeBasis(modelX, modelY, modelZ);
+                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
+                
+                box.quaternion.slerp(targetQuaternion, 0.1);
+
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
                 document.getElementById('info').innerText = "Connection Error - Check Console";
             }
-            setTimeout(fetchData, 30);
+            // Fetch data frequently for a smoother, more responsive animation.
+            setTimeout(fetchData, 30); // ~33 times per second
         }
 
         function animate() {

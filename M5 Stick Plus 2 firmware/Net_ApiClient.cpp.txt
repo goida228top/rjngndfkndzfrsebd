@@ -123,6 +123,52 @@ bool sendVoiceToGemini(uint8_t* audio_buffer, size_t buffer_len) {
     }
 }
 
+// --- ОТПРАВКА ГОЛОСА В GOOGLE SEARCH И ПОЛУЧЕНИЕ ОТВЕТА ---
+bool sendVoiceToGoogleSearch(uint8_t* audio_buffer, size_t buffer_len) {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected. Cannot send voice to Google Search.");
+        receivedMessage = "Error: WiFi not connected.";
+        paginateMessage(receivedMessage);
+        return false;
+    }
+
+    HTTPClient http;
+    String serverUrl = String(SERVER_ADDRESS) + "/google_search";
+    
+    Serial.printf("Sending voice message to Google Search (%d bytes) via %s...\n", buffer_len, serverUrl.c_str());
+    
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "audio/wav");
+    http.setConnectTimeout(10000); // 10 сек на подключение
+    http.setTimeout(30000);      // 30 сек на всю операцию
+
+    int httpResponseCode = http.POST(audio_buffer, buffer_len);
+
+    if (httpResponseCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.printf("Received Google Search response: %s\n", payload.c_str());
+        
+        receivedMessage = payload;
+        messageTimestamp = millis();
+        paginateMessage(receivedMessage); 
+        
+        http.end();
+        return true;
+    } else {
+        Serial.printf("Google Search request failed. HTTP Error code: %d\n", httpResponseCode);
+        String errorPayload = http.getString();
+        Serial.printf("Error payload: %s\n", errorPayload.c_str());
+
+        receivedMessage = "Google Search Error: " + String(httpResponseCode) + "\n" + errorPayload;
+        messageTimestamp = millis();
+        paginateMessage(receivedMessage);
+        
+        http.end();
+        return false;
+    }
+}
+
+
 // --- ОТПРАВКА УТОЧНЯЮЩЕГО ВОПРОСА В GEMINI ---
 bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previous_response) {
     if (WiFi.status() != WL_CONNECTED) {

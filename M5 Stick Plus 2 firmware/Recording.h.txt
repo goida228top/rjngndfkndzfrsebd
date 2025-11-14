@@ -3,6 +3,7 @@
 
 void handleVoiceRecording();
 void handleGeminiRecording();
+void handleGoogleSearchRecording();
 void handleGeminiFollowupRecording();
 
 #endif // RECORDING_H
