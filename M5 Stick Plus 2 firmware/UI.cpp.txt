@@ -2,6 +2,7 @@
 #include "Networking.h"
 #include "Globals.h"
 #include "UI_MenuDefs.h"
+#include "VoiceToBuzzer.h" // Для доступа к состоянию зуммера
 #include <time.h> // Для часов
 #include <WiFi.h> // Для WiFi.localIP()
 
@@ -501,22 +502,50 @@ void displayMenu() {
         drawStatusBar();
         M5.Lcd.setTextColor(TFT_WHITE);
         M5.Lcd.setFont(&fonts::efontCN_12);
-        M5.Lcd.setTextDatum(MC_DATUM);
-
-        M5.Lcd.drawString((const char*)u8"РЕЖИМ ЗУМЕРА", M5.Lcd.width() / 2, 35);
-        M5.Lcd.setTextColor(TFT_GREEN);
-        M5.Lcd.drawString((const char*)u8"Громкость: МАКС", M5.Lcd.width() / 2, 55);
-        M5.Lcd.setTextColor(TFT_WHITE);
-
-
-        M5.Lcd.setTextDatum(TL_DATUM);
-        M5.Lcd.drawString((const char*)u8"A (большая): Низкий тон", 20, 80);
-        M5.Lcd.drawString((const char*)u8"B (сбоку): Высокий тон", 20, 100);
-        M5.Lcd.drawString((const char*)u8"PWR (нажать): Эффект", 20, 120);
         
-        M5.Lcd.setTextColor(TFT_YELLOW);
+        // Отображение текущих значений
+        char buffer[32];
+        sprintf(buffer, "Частота: %d Hz", buzzer_frequency);
         M5.Lcd.setTextDatum(MC_DATUM);
-        M5.Lcd.drawString((const char*)u8"Перезагрузите для выхода", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+        M5.Lcd.drawString(buffer, M5.Lcd.width() / 2, 35);
+        sprintf(buffer, "Громкость: %d %%", buzzer_volume);
+        M5.Lcd.drawString(buffer, M5.Lcd.width() / 2, 55);
+
+        // Отрисовка кнопок
+        const char* labels[] = {(const char*)u8"Ч-", (const char*)u8"Ч+", (const char*)u8"Г-", (const char*)u8"Г+", (const char*)u8"Играть", (const char*)u8"Выход"};
+        int btn_w = 80;
+        int btn_h = 30;
+        int spacing_x = 10;
+        int spacing_y = 10;
+        int start_x = (M5.Lcd.width() - (2 * btn_w + spacing_x)) / 2;
+        int start_y = 75;
+
+        for (int i = 0; i < 6; i++) {
+            int row = i / 2;
+            int col = i % 2;
+            int x = start_x + col * (btn_w + spacing_x);
+            int y = start_y + row * (btn_h + spacing_y);
+
+            uint16_t bg_color = TFT_DARKGREY;
+            const char* label = labels[i];
+
+            // Особый случай для кнопки Играть/Стоп
+            if (i == 4 && buzzer_is_playing) {
+                label = (const char*)u8"Стоп";
+                bg_color = TFT_RED;
+            }
+
+            // Подсветка выбранной кнопки
+            if (i == buzzer_selected_button) {
+                M5.Lcd.drawRect(x - 2, y - 2, btn_w + 4, btn_h + 4, TFT_YELLOW);
+            }
+
+            M5.Lcd.fillRect(x, y, btn_w, btn_h, bg_color);
+            M5.Lcd.setTextColor(TFT_WHITE);
+            M5.Lcd.setTextDatum(MC_DATUM);
+            M5.Lcd.drawString(label, x + btn_w / 2, y + btn_h / 2);
+        }
+        
         M5.Lcd.setTextDatum(TL_DATUM);
         break;
     default:

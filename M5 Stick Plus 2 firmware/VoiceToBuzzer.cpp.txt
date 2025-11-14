@@ -1,66 +1,84 @@
 #include "VoiceToBuzzer.h"
 #include <M5StickCPlus2.h>
+#include "Globals.h" // Для setMenuMode
+#include "UI.h"      // Для displayMenu
 
-// --- НАСТРОЙКИ ТОНОВ ---
-const int FREQ_A = 523; // C5
-const int FREQ_B = 1046; // C6
+// Состояние для синтезатора в режиме "Зумер"
+int buzzer_frequency = 440; // Нота A4
+int buzzer_volume = 50;
+bool buzzer_is_playing = false;
+int buzzer_selected_button = 0; // 0-5
 
 void handleBuzzerMode() {
-    // Устанавливаем громкость на максимум при первом входе в режим
-    static bool is_volume_set = false;
-    if (!is_volume_set) {
-        M5.Speaker.setVolume(100);
-        is_volume_set = true;
+    // Одноразовая настройка при входе в режим
+    static bool is_first_run = true;
+    if (is_first_run) {
+        M5.Speaker.setVolume(buzzer_volume);
+        buzzer_is_playing = false; // Убедимся, что звук выключен
+        M5.Speaker.stop();
+        is_first_run = false;
     }
 
-    // Статические переменные для отслеживания состояния кнопок/зуммера,
-    // чтобы звук не включался/выключался в каждом цикле.
-    static bool tone_a_is_playing = false;
-    static bool tone_b_is_playing = false;
+    bool state_changed = false;
 
-    // --- ОБРАБОТКА КНОПКИ A (БОЛЬШАЯ) ---
-    if (M5.BtnA.isPressed()) {
-        if (!tone_a_is_playing) {
-            M5.Speaker.stop(); // Останавливаем любой другой звук
-            M5.Speaker.tone(FREQ_A);
-            tone_a_is_playing = true;
-            tone_b_is_playing = false; // A имеет приоритет
-        }
-    } else {
-        if (tone_a_is_playing) {
-            M5.Speaker.stop();
-            tone_a_is_playing = false;
-        }
-    }
-
-    // --- ОБРАБОТКА КНОПКИ B (СБОКУ) ---
-    // Сработает, только если кнопка А не зажата
-    if (!tone_a_is_playing) {
-        if (M5.BtnB.isPressed()) {
-            if (!tone_b_is_playing) {
-                M5.Speaker.stop();
-                M5.Speaker.tone(FREQ_B);
-                tone_b_is_playing = true;
-            }
-        } else {
-            if (tone_b_is_playing) {
-                M5.Speaker.stop();
-                tone_b_is_playing = false;
-            }
-        }
-    }
-
-    // --- ОБРАБОТКА КНОПКИ PWR (ПИТАНИЕ) - КОРОТКОЕ НАЖАТИЕ ---
+    // --- НАВИГАЦИЯ ---
+    // Кнопка PWR (нижняя) - вперед
     if (M5.BtnPWR.wasPressed()) {
-        // Останавливаем текущие тона, чтобы проиграть эффект
-        if (tone_a_is_playing || tone_b_is_playing) {
-             M5.Speaker.stop();
-             tone_a_is_playing = false;
-             tone_b_is_playing = false;
+        buzzer_selected_button = (buzzer_selected_button + 1) % 6;
+        state_changed = true;
+    }
+
+    // Кнопка B (боковая) - назад
+    if (M5.BtnB.wasPressed()) {
+        buzzer_selected_button = (buzzer_selected_button - 1 + 6) % 6;
+        state_changed = true;
+    }
+
+    // --- ДЕЙСТВИЕ ---
+    // Кнопка A (большая) - активация
+    if (M5.BtnA.wasPressed()) {
+        state_changed = true;
+        switch (buzzer_selected_button) {
+            case 0: // Частота -
+                buzzer_frequency -= 50;
+                if (buzzer_frequency < 50) buzzer_frequency = 50;
+                break;
+            case 1: // Частота +
+                buzzer_frequency += 50;
+                if (buzzer_frequency > 8000) buzzer_frequency = 8000;
+                break;
+            case 2: // Громкость -
+                buzzer_volume -= 10;
+                if (buzzer_volume < 0) buzzer_volume = 0;
+                M5.Speaker.setVolume(buzzer_volume);
+                break;
+            case 3: // Громкость +
+                buzzer_volume += 10;
+                if (buzzer_volume > 100) buzzer_volume = 100;
+                M5.Speaker.setVolume(buzzer_volume);
+                break;
+            case 4: // Играть/Стоп
+                buzzer_is_playing = !buzzer_is_playing;
+                break;
+            case 5: // Выход
+                buzzer_is_playing = false;
+                M5.Speaker.stop();
+                is_first_run = true; // Сброс для следующего входа
+                setMenuMode(MODE_MAIN_MENU);
+                displayMenu();
+                return; // Немедленный выход
         }
-        // Проигрываем короткий "чирп"
-        M5.Speaker.tone(1500, 100); // Частота 1500 Гц на 100 мс
-        // После этого, если другие кнопки все еще зажаты,
-        // их звук возобновится в следующем цикле loop().
+    }
+    
+    // Обновляем состояние динамика
+    if (buzzer_is_playing) {
+        M5.Speaker.tone(buzzer_frequency);
+    } else {
+        M5.Speaker.stop();
+    }
+
+    // Перерисовываем экран, если что-то изменилось
+    if (state_changed) {
+        displayMenu();
     }
 }

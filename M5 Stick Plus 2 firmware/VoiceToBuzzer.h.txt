@@ -1,6 +1,12 @@
 #ifndef VOICE_TO_BUZZER_H
 #define VOICE_TO_BUZZER_H
 
+// --- Состояние для синтезатора в режиме "Зумер" ---
+extern int buzzer_frequency;
+extern int buzzer_volume;
+extern bool buzzer_is_playing;
+extern int buzzer_selected_button;
+
 void handleBuzzerMode();
 
 #endif // VOICE_TO_BUZZER_H
