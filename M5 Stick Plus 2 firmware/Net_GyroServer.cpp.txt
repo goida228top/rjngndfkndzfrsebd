@@ -3,18 +3,32 @@
 #include "Globals.h"
 #include <WebServer.h>
 
-// --- НОВЫЕ ФУНКЦИИ ДЛЯ ВЕБ-СЕРВЕРА ГИРОСКОПА ---
+// --- НОВЫЕ ФУНКЦИИ ДЛЯ ВЕБ-СЕРВЕРЕРА ГИРОСКОПА ---
 
 const char* GYRO_HTML = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
     <title>M5-Nexus IMU 3D</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <style>
         body { margin: 0; background-color: #1e1e1e; color: #d4d4d4; overflow: hidden; font-family: monospace; }
         canvas { display: block; }
-        #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
+        #settings {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border-radius: 8px;
+            width: 280px;
+            z-index: 200;
+        }
+        .setting { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .setting label { flex-basis: 45%; }
+        .setting input { flex-basis: 45%; }
+        .setting span { flex-basis: 10%; text-align: right; }
     </style>
     <script type="importmap">
     {
@@ -28,62 +42,123 @@ const char* GYRO_HTML = R"rawliteral(
 <body>
     <div id="info">M5-Nexus IMU Visualization</div>
 
+    <div id="settings">
+        <div class="setting">
+            <label for="smoothing">Сглаживание</label>
+            <input type="range" id="smoothing" min="0" max="98" value="90">
+            <span id="smoothing-value">0.90</span>
+        </div>
+        <hr>
+        <div class="setting">
+            <label for="gyro-sens-x">Gyro X Sens</label>
+            <input type="range" id="gyro-sens-x" min="10" max="200" value="100">
+            <span id="gyro-sens-x-value">1.00</span>
+        </div>
+        <div class="setting">
+            <label for="gyro-sens-y">Gyro Y Sens</label>
+            <input type="range" id="gyro-sens-y" min="10" max="200" value="100">
+            <span id="gyro-sens-y-value">1.00</span>
+        </div>
+        <div class="setting">
+            <label for="gyro-sens-z">Gyro Z Sens</label>
+            <input type="range" id="gyro-sens-z" min="10" max="200" value="100">
+            <span id="gyro-sens-z-value">1.00</span>
+        </div>
+        <hr>
+        <div class="setting">
+            <label for="accel-sens">Movement Sens</label>
+            <input type="range" id="accel-sens" min="1" max="10" value="4">
+            <span id="accel-sens-value">4.0</span>
+        </div>
+        <div class="setting">
+            <label for="spring-stiffness">Spring Stiffness</label>
+            <input type="range" id="spring-stiffness" min="5" max="50" value="25">
+            <span id="spring-stiffness-value">25.0</span>
+        </div>
+        <div class="setting">
+            <label for="damping">Damping</label>
+            <input type="range" id="damping" min="1" max="15" value="7">
+            <span id="damping-value">7.0</span>
+        </div>
+    </div>
+
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import Stats from 'three/examples/jsm/libs/stats.module.js';
-
-        let scene, camera, renderer, box, controls, stats;
+        
+        let scene, camera, renderer, box, controls;
         let isUserControlling = false;
 
-        // --- Sensor Fusion and Physics State ---
-        let deviceQuaternion = new THREE.Quaternion();
-        let devicePosition = new THREE.Vector3();
+        // --- State and Target State for Smoothing ---
+        let targetQuaternion = new THREE.Quaternion();
+        let targetPosition = new THREE.Vector3();
         let deviceVelocity = new THREE.Vector3();
         let lastTimestamp = performance.now();
         const dps_to_rad = Math.PI / 180.0;
 
+        // --- User-configurable settings ---
+        let settings = {
+            smoothing: 0.9,
+            gyroSensX: 1.0,
+            gyroSensY: 1.0,
+            gyroSensZ: 1.0,
+            accelSens: 4.0,
+            springStiffness: 25.0,
+            damping: 7.0,
+        };
+
+        function setupUI() {
+            const sliders = {
+                'smoothing': { valueId: 'smoothing-value', factor: 100 },
+                'gyro-sens-x': { key: 'gyroSensX', valueId: 'gyro-sens-x-value', factor: 100 },
+                'gyro-sens-y': { key: 'gyroSensY', valueId: 'gyro-sens-y-value', factor: 100 },
+                'gyro-sens-z': { key: 'gyroSensZ', valueId: 'gyro-sens-z-value', factor: 100 },
+                'accel-sens': { key: 'accelSens', valueId: 'accel-sens-value', factor: 1 },
+                'spring-stiffness': { key: 'springStiffness', valueId: 'spring-stiffness-value', factor: 1 },
+                'damping': { valueId: 'damping-value', factor: 1 },
+            };
+
+            for (const id in sliders) {
+                const slider = document.getElementById(id);
+                const valueEl = document.getElementById(sliders[id].valueId);
+                const key = sliders[id].key || id;
+
+                slider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value) / (sliders[id].factor || 1);
+                    settings[key] = value;
+                    valueEl.textContent = value.toFixed(sliders[id].factor === 100 ? 2 : 1);
+                });
+            }
+        }
 
         function init() {
-            // Scene
             scene = new THREE.Scene();
-
-            // Camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = 5;
 
-            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             
-            // Stats (FPS counter)
-            stats = new Stats();
-            document.body.appendChild(stats.dom);
-
-            // Controls
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.addEventListener('start', () => { isUserControlling = true; });
             controls.addEventListener('end', () => { isUserControlling = false; });
 
-            // Box (representing M5Stick) - Proportions adjusted to match screen ratio (135x240)
             const geometry = new THREE.BoxGeometry(1.35, 2.4, 0.6); 
-            const material = new THREE.MeshStandardMaterial({ color: 0xfc9803, roughness: 0.5 }); // Orange color
+            const material = new THREE.MeshStandardMaterial({ color: 0xfc9803, roughness: 0.5 });
             box = new THREE.Mesh(geometry, material);
             scene.add(box);
 
-            // Lights
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
             directionalLight.position.set(2, 5, 5);
             scene.add(directionalLight);
 
-            // Handle window resize
             window.addEventListener('resize', onWindowResize, false);
             
-            // Start fetching data and animating
+            setupUI();
             fetchData();
             animate();
         }
@@ -97,83 +172,85 @@ const char* GYRO_HTML = R"rawliteral(
         async function fetchData() {
             try {
                 const response = await fetch('/data');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 
                 if (isUserControlling) {
-                    // When user is controlling, reset physics to avoid jumps when releasing
                     lastTimestamp = performance.now();
                     deviceVelocity.set(0, 0, 0);
+                    // When user moves the camera, snap the target to the current position
+                    targetQuaternion.copy(box.quaternion);
+                    targetPosition.copy(box.position);
                 } else {
                     const now = performance.now();
-                    const dt = Math.min((now - lastTimestamp) / 1000.0, 0.1); // Cap dt to avoid physics explosion
+                    const dt = Math.min((now - lastTimestamp) / 1000.0, 0.1);
                     lastTimestamp = now;
 
-                    // --- 1. ORIENTATION (Sensor Fusion: Gyro + Accelerometer) ---
+                    // --- 1. ORIENTATION (Sensor Fusion) ---
+                    const gx = -data.gx * dps_to_rad * settings.gyroSensX;
+                    const gy = -data.gy * dps_to_rad * settings.gyroSensY;
+                    const gz =  data.gz * dps_to_rad * settings.gyroSensZ;
                     
-                    // Gyroscope update (prediction)
-                    const gx = -data.gx * dps_to_rad;
-                    const gy = -data.gy * dps_to_rad;
-                    const gz =  data.gz * dps_to_rad;
                     const deltaQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(gy, gx, gz, 'YXZ'));
-                    deviceQuaternion.premultiply(deltaQuat);
+                    targetQuaternion.premultiply(deltaQuat);
                     
-                    // Accelerometer correction
                     const accelVec = new THREE.Vector3(-data.ax, -data.ay, data.az);
-                    if (accelVec.lengthSq() > 0.5) { // Only correct if accel is near 1G
-                        const gravity = accelVec.clone().normalize();
-                        const modelZ = gravity.clone().negate();
-                        const worldUp = new THREE.Vector3(0, 1, 0);
-                        const modelX = new THREE.Vector3().crossVectors(worldUp, modelZ).normalize();
-                        if (modelX.lengthSq() < 0.001) { // Gimbal lock check
-                            modelX.crossVectors(new THREE.Vector3(1, 0, 0), modelZ).normalize();
-                        }
-                        const modelY = new THREE.Vector3().crossVectors(modelZ, modelX);
-                        const rotationMatrix = new THREE.Matrix4().makeBasis(modelX, modelY, modelZ);
-                        const accelQuat = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
-                        deviceQuaternion.slerp(accelQuat, 0.05); // Fuse via slerp
+                    if (accelVec.lengthSq() > 0.5 && accelVec.lengthSq() < 1.5) {
+                         const gravity = accelVec.clone().normalize();
+                         const modelZ = gravity.clone().negate();
+                         const worldUp = new THREE.Vector3(0, 1, 0);
+                         const modelX = new THREE.Vector3().crossVectors(worldUp, modelZ).normalize();
+                         if (modelX.lengthSq() < 0.001) {
+                             modelX.crossVectors(new THREE.Vector3(1, 0, 0), modelZ).normalize();
+                         }
+                         const modelY = new THREE.Vector3().crossVectors(modelZ, modelX);
+                         const rotationMatrix = new THREE.Matrix4().makeBasis(modelX, modelY, modelZ);
+                         const accelQuat = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
+                         targetQuaternion.slerp(accelQuat, 0.05);
                     }
-                    deviceQuaternion.normalize();
-                    box.quaternion.copy(deviceQuaternion);
+                    targetQuaternion.normalize();
 
-                    // --- 2. POSITION (Double integration of linear acceleration) ---
-
-                    const worldGravity = new THREE.Vector3(0, -1, 0); // Gravity vector in world space
-                    const localGravity = worldGravity.clone().applyQuaternion(deviceQuaternion.clone().invert());
+                    // --- 2. POSITION (Double integration) ---
+                    const worldGravity = new THREE.Vector3(0, -1, 0);
+                    const localGravity = worldGravity.clone().applyQuaternion(targetQuaternion.clone().invert());
                     const linearAccel = accelVec.clone().sub(localGravity);
-                    const worldLinearAccel = linearAccel.clone().applyQuaternion(deviceQuaternion);
                     
-                    const ACCEL_SCALE = 3.0;
-                    const SPRING_STIFFNESS = 25.0;
-                    const DAMPING = 5.0;
+                    // Dead zone to filter noise
+                    if (linearAccel.lengthSq() < 0.01) {
+                        linearAccel.set(0,0,0);
+                    }
 
-                    let force = worldLinearAccel.multiplyScalar(ACCEL_SCALE);
-                    force.add(devicePosition.clone().multiplyScalar(-SPRING_STIFFNESS)); // Spring force
-                    force.add(deviceVelocity.clone().multiplyScalar(-DAMPING));       // Damping force
+                    const worldLinearAccel = linearAccel.clone().applyQuaternion(targetQuaternion);
+                    
+                    let force = worldLinearAccel.multiplyScalar(settings.accelSens);
+                    force.add(targetPosition.clone().multiplyScalar(-settings.springStiffness));
+                    force.add(deviceVelocity.clone().multiplyScalar(-settings.damping));
                     
                     deviceVelocity.add(force.clone().multiplyScalar(dt));
-                    devicePosition.add(deviceVelocity.clone().multiplyScalar(dt));
+                    targetPosition.add(deviceVelocity.clone().multiplyScalar(dt));
 
-                    const MAX_POS = 1.0;
-                    if (devicePosition.length() > MAX_POS) {
-                         devicePosition.normalize().multiplyScalar(MAX_POS);
-                         deviceVelocity.set(0,0,0);
+                    const MAX_POS = 1.5;
+                    if (targetPosition.length() > MAX_POS) {
+                         targetPosition.normalize().multiplyScalar(MAX_POS);
+                         deviceVelocity.multiplyScalar(0.5); // lose some energy on impact
                     }
-                    box.position.copy(devicePosition);
                 }
             } catch (error) {
                 console.error('Error fetching IMU data:', error);
                 document.getElementById('info').innerText = "Connection Error - Check Console";
             }
-            setTimeout(fetchData, 30);
+            setTimeout(fetchData, 30); // ~33 Hz update rate for physics
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            controls.update(); // for damping
-            stats.update();
+
+            // --- Smoothing Logic ---
+            const alpha = 1.0 - settings.smoothing;
+            box.quaternion.slerp(targetQuaternion, alpha);
+            box.position.lerp(targetPosition, alpha);
+            
+            controls.update();
             renderer.render(scene, camera);
         }
 
