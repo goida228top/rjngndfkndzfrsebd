@@ -503,12 +503,16 @@ void displayMenu() {
         M5.Lcd.setFont(&fonts::efontCN_12);
         M5.Lcd.setTextDatum(MC_DATUM);
 
-        M5.Lcd.drawString((const char*)u8"РЕЖИМ ЗУМЕРА", M5.Lcd.width() / 2, 40);
+        M5.Lcd.drawString((const char*)u8"РЕЖИМ ЗУМЕРА", M5.Lcd.width() / 2, 35);
+        M5.Lcd.setTextColor(TFT_GREEN);
+        M5.Lcd.drawString((const char*)u8"Громкость: МАКС", M5.Lcd.width() / 2, 55);
+        M5.Lcd.setTextColor(TFT_WHITE);
+
 
         M5.Lcd.setTextDatum(TL_DATUM);
-        M5.Lcd.drawString((const char*)u8"A (большая): Низкий тон", 20, 70);
-        M5.Lcd.drawString((const char*)u8"B (сбоку): Высокий тон", 20, 90);
-        M5.Lcd.drawString((const char*)u8"PWR (нажать): Эффект", 20, 110);
+        M5.Lcd.drawString((const char*)u8"A (большая): Низкий тон", 20, 80);
+        M5.Lcd.drawString((const char*)u8"B (сбоку): Высокий тон", 20, 100);
+        M5.Lcd.drawString((const char*)u8"PWR (нажать): Эффект", 20, 120);
         
         M5.Lcd.setTextColor(TFT_YELLOW);
         M5.Lcd.setTextDatum(MC_DATUM);

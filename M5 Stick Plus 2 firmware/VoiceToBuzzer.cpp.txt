@@ -6,6 +6,13 @@ const int FREQ_A = 523; // C5
 const int FREQ_B = 1046; // C6
 
 void handleBuzzerMode() {
+    // Устанавливаем громкость на максимум при первом входе в режим
+    static bool is_volume_set = false;
+    if (!is_volume_set) {
+        M5.Speaker.setVolume(100);
+        is_volume_set = true;
+    }
+
     // Статические переменные для отслеживания состояния кнопок/зуммера,
     // чтобы звук не включался/выключался в каждом цикле.
     static bool tone_a_is_playing = false;
