@@ -14,8 +14,8 @@ const char* mainMenu[] = {
 const int numMainMenu = sizeof(mainMenu) / sizeof(mainMenu[0]);
 
 const char* wifiMenu[] = {
-    (const char*)u8"Setup New Network",
-    (const char*)u8"Back"
+    (const char*)u8"Настроить новую сеть",
+    (const char*)u8"Назад"
 };
 const int numWifiMenu = sizeof(wifiMenu) / sizeof(wifiMenu[0]);
 

@@ -15,7 +15,7 @@ const char* CONFIG_HTML = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-    <title>M5-Nexus Wi-Fi Setup</title>
+    <title>M5-Nexus: Настройка Wi-Fi</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f0f0; text-align: center; }
@@ -47,23 +47,23 @@ const char* CONFIG_HTML = R"rawliteral(
 <body>
     <div class="container">
         <div id="main-content">
-            <h1>M5-Nexus Wi-Fi Setup</h1>
-            <h3>1. Select a Network</h3>
+            <h1>M5-Nexus: Настройка Wi-Fi</h1>
+            <h3>1. Выберите сеть</h3>
             <ul class="wifi-list">
                 %WIFI_LIST%
             </ul>
-            <h3>2. Enter Credentials</h3>
+            <h3>2. Введите данные</h3>
             <form action="/save" method="POST" onsubmit="return handleSubmit()">
-                <input type="text" id="ssid" name="ssid" placeholder="SSID (Network Name)" required>
-                <input type="password" name="password" placeholder="Password">
-                <input type="submit" value="Save & Connect">
+                <input type="text" id="ssid" name="ssid" placeholder="SSID (Имя сети)" required>
+                <input type="password" name="password" placeholder="Пароль">
+                <input type="submit" value="Сохранить и подключиться">
             </form>
         </div>
         <div id="loading-content">
             <div class="loader-container">
                 <div class="loader"></div>
-                <h2>Saving credentials...</h2>
-                <p>The device will restart.</p>
+                <h2>Сохранение...</h2>
+                <p>Устройство будет перезагружено.</p>
             </div>
         </div>
     </div>
@@ -76,7 +76,7 @@ void handleRoot() {
     int numNetworks = WiFi.scanNetworks();
     String wifi_list_items;
     if (numNetworks == 0) {
-        wifi_list_items = "<li>No networks found. Refresh page to scan again.</li>";
+        wifi_list_items = "<li>Сети не найдены. Обновите страницу.</li>";
     } else {
         for (int i = 0; i < numNetworks; ++i) {
             wifi_list_items += "<li onclick='selectSSID(\"" + WiFi.SSID(i) + "\")'>" + WiFi.SSID(i) + "</li>";
@@ -94,7 +94,7 @@ void handleSave() {
 
     if (ssid.length() > 0) {
         saveWiFiCredentials(ssid.c_str(), password.c_str());
-        String response_html = "<h1>Saved!</h1><p>Credentials saved for " + ssid + ". The device will now restart and attempt to connect.</p><p>You can close this window.</p>";
+        String response_html = "<h1>Сохранено!</h1><p>Данные для сети " + ssid + " сохранены. Устройство перезагрузится и попытается подключиться.</p><p>Это окно можно закрыть.</p>";
         server.send(200, "text/html", response_html);
         delay(2000);
         
@@ -105,7 +105,7 @@ void handleSave() {
         Serial.println("Restarting device...");
         ESP.restart();
     } else {
-        server.send(400, "text/html", "<h1>Error</h1><p>SSID cannot be empty. Please go back and try again.</p>");
+        server.send(400, "text/html", "<h1>Ошибка</h1><p>Имя сети (SSID) не может быть пустым. Вернитесь назад и попробуйте снова.</p>");
     }
 }
 

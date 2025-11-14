@@ -1,5 +1,5 @@
 {
-  "name": "M5-Nexus Project Hub",
-  "description": "A container project for M5StickCPlus2 and Camera firmware.",
+  "name": "M5-Nexus: Проекты",
+  "description": "Контейнер проектов для прошивок M5StickCPlus2 и Камеры.",
   "requestFramePermissions": []
 }

@@ -27,16 +27,14 @@ void drawStatusBar() {
     M5.Lcd.fillRect(0, statusBarY, M5.Lcd.width(), statusBarH, TFT_BLACK);
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.setFont(&fonts::efontCN_12);
-    M5.Lcd.setTextDatum(ML_DATUM);
-    M5.Lcd.drawString("M5-Nexus", 5, statusBarY + (statusBarH / 2));
 
-    // --- Отображение времени ---
+    // --- Отображение времени слева ---
     struct tm timeinfo;
     if (getLocalTime(&timeinfo, 10)) { // 10ms таймаут, не блокирующий
         char timeStr[6];
         strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
-        M5.Lcd.setTextDatum(MC_DATUM);
-        M5.Lcd.drawString(timeStr, M5.Lcd.width() / 2, statusBarY + (statusBarH / 2));
+        M5.Lcd.setTextDatum(ML_DATUM);
+        M5.Lcd.drawString(timeStr, 5, statusBarY + (statusBarH / 2));
     }
 
 
@@ -121,18 +119,18 @@ void drawWifiConfigScreen() {
     M5.Lcd.setRotation(1); // Set landscape for more space
     
     M5.Lcd.setTextDatum(MC_DATUM);
-    M5.Lcd.drawString("Wi-Fi Setup Mode", M5.Lcd.width() / 2, 20);
+    M5.Lcd.drawString((const char*)u8"Настройка Wi-Fi", M5.Lcd.width() / 2, 20);
     
     M5.Lcd.setTextDatum(TL_DATUM);
-    M5.Lcd.drawString("1. Connect to Wi-Fi network:", 10, 45);
+    M5.Lcd.drawString((const char*)u8"1. Подключитесь к Wi-Fi:", 10, 45);
     M5.Lcd.setTextColor(TFT_YELLOW);
     M5.Lcd.drawString("   'M5-Nexus-Setup'", 10, 65);
     M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.drawString("2. Open browser and go to:", 10, 90);
+    M5.Lcd.drawString((const char*)u8"2. Откройте браузер:", 10, 90);
     M5.Lcd.setTextColor(TFT_YELLOW);
     M5.Lcd.drawString("   http://192.168.4.1", 10, 110);
     M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.drawString("3. Press Button B to cancel.", 10, 135);
+    M5.Lcd.drawString((const char*)u8"3. Нажмите кнопку B для отмены.", 10, 135);
     
     M5.Lcd.setTextDatum(TL_DATUM);
 }
@@ -143,10 +141,10 @@ void drawConnectionFailedScreen() {
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.setFont(&fonts::efontCN_12);
     M5.Lcd.setTextDatum(MC_DATUM);
-    M5.Lcd.drawString("Connection Failed", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 25);
-    M5.Lcd.drawString("Check password or", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 5);
-    M5.Lcd.drawString("run Wi-Fi setup.", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 15);
-    M5.Lcd.drawString("Press Btn A...", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 45);
+    M5.Lcd.drawString((const char*)u8"Ошибка подключения", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 25);
+    M5.Lcd.drawString((const char*)u8"Проверьте пароль или", M5.Lcd.width() / 2, M5.Lcd.height() / 2 - 5);
+    M5.Lcd.drawString((const char*)u8"запустите настройку.", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 15);
+    M5.Lcd.drawString((const char*)u8"Нажмите кнопку А...", M5.Lcd.width() / 2, M5.Lcd.height() / 2 + 45);
     M5.Lcd.setTextDatum(TL_DATUM);
 }
 
@@ -320,15 +318,15 @@ void drawDiagnosticsScreen() {
     M5.Lcd.setFont(&fonts::efontCN_12);
     M5.Lcd.setTextDatum(TL_DATUM);
     M5.Lcd.setCursor(10, 30);
-    M5.Lcd.println("Network Diagnostics");
+    M5.Lcd.println((const char*)u8"Диагностика сети");
     M5.Lcd.drawLine(10, 45, M5.Lcd.width() - 10, 45, TFT_DARKGREY);
 
     M5.Lcd.setCursor(10, 60);
-    M5.Lcd.print("Internet (Google): ");
+    M5.Lcd.print((const char*)u8"Интернет (Google): ");
     
     if (diagStatusGoogle == "OK") {
         M5.Lcd.setTextColor(TFT_GREEN);
-    } else if (diagStatusGoogle == "Failed") {
+    } else if (diagStatusGoogle == (const char*)u8"Ошибка") {
         M5.Lcd.setTextColor(TFT_RED);
     } else {
         M5.Lcd.setTextColor(TFT_YELLOW);
@@ -337,11 +335,11 @@ void drawDiagnosticsScreen() {
     M5.Lcd.setTextColor(TFT_WHITE);
 
     M5.Lcd.setCursor(10, 80);
-    M5.Lcd.print("Server (Your IP):  ");
+    M5.Lcd.print((const char*)u8"Сервер (Ваш IP):  ");
     
     if (diagStatusServer == "OK") {
         M5.Lcd.setTextColor(TFT_GREEN);
-    } else if (diagStatusServer == "Failed") {
+    } else if (diagStatusServer == (const char*)u8"Ошибка") {
         M5.Lcd.setTextColor(TFT_RED);
     } else {
         M5.Lcd.setTextColor(TFT_YELLOW);
@@ -351,7 +349,7 @@ void drawDiagnosticsScreen() {
 
 
     M5.Lcd.setTextDatum(MC_DATUM);
-    M5.Lcd.drawString("Press B to go back", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+    M5.Lcd.drawString((const char*)u8"Нажмите B для возврата", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
     M5.Lcd.setTextDatum(TL_DATUM);
 }
 
@@ -363,7 +361,7 @@ void drawGyroscopeScreen() {
     M5.Lcd.setTextDatum(MC_DATUM);
 
     if (isWifiConnected()) {
-        M5.Lcd.drawString("Web-server OK", M5.Lcd.width() / 2, 40);
+        M5.Lcd.drawString((const char*)u8"Веб-сервер ОК", M5.Lcd.width() / 2, 40);
         M5.Lcd.setTextColor(TFT_YELLOW);
         M5.Lcd.drawString(WiFi.localIP().toString(), M5.Lcd.width() / 2, 70);
         M5.Lcd.setTextColor(TFT_WHITE);
@@ -372,12 +370,12 @@ void drawGyroscopeScreen() {
 
     } else {
         M5.Lcd.setTextColor(TFT_RED);
-        M5.Lcd.drawString("Web-server OFF", M5.Lcd.width() / 2, 60);
+        M5.Lcd.drawString((const char*)u8"Веб-сервер ВЫКЛ", M5.Lcd.width() / 2, 60);
         M5.Lcd.setTextColor(TFT_WHITE);
         M5.Lcd.drawString((const char*)u8"Подключитесь к Wi-Fi", M5.Lcd.width() / 2, 100);
     }
 
-    M5.Lcd.drawString("Press B to go back", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
+    M5.Lcd.drawString((const char*)u8"Нажмите B для возврата", M5.Lcd.width() / 2, M5.Lcd.height() - 20);
     M5.Lcd.setTextDatum(TL_DATUM);
 }
 
@@ -397,7 +395,7 @@ void drawStealthClock() {
     if(!getLocalTime(&timeinfo, 10) || timeinfo.tm_year < 123){
         M5.Lcd.setFont(&fonts::Font2);
         M5.Lcd.setTextDatum(MC_DATUM);
-        M5.Lcd.drawString("Syncing...", M5.Lcd.width()/2, M5.Lcd.height()/2);
+        M5.Lcd.drawString((const char*)u8"Синхронизация...", M5.Lcd.width()/2, M5.Lcd.height()/2);
         return;
     }
 
@@ -431,7 +429,7 @@ void displayMenu() {
       M5.Lcd.setTextColor(TFT_BLACK);
       M5.Lcd.setFont(&fonts::efontCN_12); 
       M5.Lcd.setTextDatum(MC_DATUM);
-      M5.Lcd.drawString("Connecting...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
+      M5.Lcd.drawString((const char*)u8"Подключение...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
       M5.Lcd.setTextDatum(TL_DATUM);
       break;
     case MODE_TIME_SYNCING:
@@ -440,7 +438,7 @@ void displayMenu() {
       M5.Lcd.setTextColor(TFT_BLACK);
       M5.Lcd.setFont(&fonts::efontCN_12);
       M5.Lcd.setTextDatum(MC_DATUM);
-      M5.Lcd.drawString("Time Syncing...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
+      M5.Lcd.drawString((const char*)u8"Синхронизация времени...", M5.Lcd.width() / 2, M5.Lcd.height() / 2);
       M5.Lcd.setTextDatum(TL_DATUM);
       break;
     case MODE_CONNECTION_FAILED:

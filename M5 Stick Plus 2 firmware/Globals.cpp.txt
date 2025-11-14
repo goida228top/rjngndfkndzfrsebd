@@ -28,8 +28,8 @@ int totalPages = 0;
 
 // Состояние UI
 int messageMenuSelection = 0;
-String diagStatusGoogle = "Waiting...";
-String diagStatusServer = "Waiting...";
+String diagStatusGoogle = (const char*)u8"Ожидание...";
+String diagStatusServer = (const char*)u8"Ожидание...";
 bool isClockDarkTheme = false;
 int clockRotation = 1;
 

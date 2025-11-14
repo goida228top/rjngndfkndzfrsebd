@@ -8,8 +8,8 @@
 
 // --- ДИАГНОСТИКА СЕТИ ---
 void runNetworkDiagnostics() {
-    diagStatusGoogle = "Testing...";
-    diagStatusServer = "Waiting...";
+    diagStatusGoogle = (const char*)u8"Тест...";
+    diagStatusServer = (const char*)u8"Ожидание...";
     displayMenu(); // Показываем "Testing..."
 
     WiFiClient client;
@@ -21,7 +21,7 @@ void runNetworkDiagnostics() {
         Serial.println("Diagnostic: Google connection successful.");
         client.stop();
     } else {
-        diagStatusGoogle = "Failed";
+        diagStatusGoogle = (const char*)u8"Ошибка";
         Serial.println("Diagnostic: Google connection failed. Check WiFi router and internet access.");
     }
     displayMenu(); // Обновляем UI с результатом Google
@@ -29,7 +29,7 @@ void runNetworkDiagnostics() {
     delay(200);
 
     // --- ТЕСТ 2: ПОДКЛЮЧЕНИЕ К ВАШЕМУ СЕРВЕРУ (ПРОВЕРКА ДОСТУПНОСТИ) ---
-    diagStatusServer = "Testing...";
+    diagStatusServer = (const char*)u8"Тест...";
     displayMenu(); // Показываем "Testing..." для сервера
 
     Serial.println("Diagnostic: Testing connection to server 64.188.92.134:5000...");
@@ -38,7 +38,7 @@ void runNetworkDiagnostics() {
         Serial.println("Diagnostic: Server connection successful.");
         client.stop();
     } else {
-        diagStatusServer = "Failed";
+        diagStatusServer = (const char*)u8"Ошибка";
         Serial.println("Diagnostic: Server connection failed. Check server is running and port 5000 is open (firewall).");
     }
     displayMenu(); // Обновляем UI с финальным результатом
