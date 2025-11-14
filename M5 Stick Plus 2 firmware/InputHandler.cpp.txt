@@ -159,7 +159,7 @@ void handleInput() {
              case MODE_VOICE_TO_BUZZER:
                 // При выходе выключаем микрофон и зуммер
                 M5.Mic.end();
-                M5.Beep.noTone();
+                M5.Speaker.stop();
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();
                 break;

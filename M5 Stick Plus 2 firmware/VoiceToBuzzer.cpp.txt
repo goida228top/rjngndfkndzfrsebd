@@ -65,9 +65,9 @@ void handleVoiceToBuzzer() {
 
     // 5. Воспроизведение на зуммере
     if (display_amplitude > AMPLITUDE_THRESHOLD) {
-        M5.Beep.tone(peak_frequency);
+        M5.Speaker.tone(peak_frequency);
     } else {
-        M5.Beep.noTone();
+        M5.Speaker.stop();
         peak_frequency = 0; // Сбрасываем частоту, если тихо
     }
     
