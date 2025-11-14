@@ -20,7 +20,7 @@ void createWavHeader_manual(uint8_t* header, size_t data_size) {
     header[25] = (byte)((sample_rate >> 8) & 0xFF);
     header[26] = (byte)((sample_rate >> 16) & 0xFF);
     header[27] = (byte)((sample_rate >> 24) & 0xFF);
-    uint16_t bits_per_sample = 8;
+    uint16_t bits_per_sample = 16; // ИСПРАВЛЕНО: Микрофон пишет 16-битный звук
     uint32_t byte_rate = sample_rate * num_channels * (bits_per_sample / 8);
     header[28] = (byte)(byte_rate & 0xFF);
     header[29] = (byte)((byte_rate >> 8) & 0xFF);

@@ -7,7 +7,7 @@
 // --- НАСТРОЙКИ FFT ---
 #define MIC_SAMPLE_RATE 8000
 #define FFT_SAMPLES 256 // Должно быть степенью 2
-#define AMPLITUDE_THRESHOLD 10000.0 // Порог "громкости" для сырых 16-битных данных
+#define AMPLITUDE_THRESHOLD 200000.0 // Увеличено для отсечения шума (было 10000.0)
 #define MIN_FREQ 80.0    // Минимальная частота для человеческого голоса (Hz)
 #define MAX_FREQ 1200.0  // Максимальная частота для человеческого голоса (Hz)
 #define PLAYBACK_CHUNK_DELAY (FFT_SAMPLES * 1000 / MIC_SAMPLE_RATE) // Задержка для каждого блока FFT
@@ -40,6 +40,7 @@ void processAndPlayRecording() {
         }
 
         // 2. Выполнение FFT
+        FFT.DCRemoval(); // Удаляем DC-смещение для более чистого анализа
         FFT.Windowing(FFT_WIN_TYP_HAMMING, FFT_FORWARD);
         FFT.Compute(FFT_FORWARD);
         FFT.ComplexToMagnitude();
