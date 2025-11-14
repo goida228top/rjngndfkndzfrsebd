@@ -22,6 +22,15 @@
 
 #include "arduinoFFT.h"
 
+// Добавлены недостающие определения
+#ifndef FOUR_PI
+#define FOUR_PI (2.0 * TWO_PI)
+#endif
+#ifndef SIX_PI
+#define SIX_PI (3.0 * TWO_PI)
+#endif
+
+
 arduinoFFT::arduinoFFT(void)
 {
 /* constructor */
