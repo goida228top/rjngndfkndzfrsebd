@@ -104,6 +104,9 @@ bool sendVoiceToGemini(uint8_t* audio_buffer, size_t buffer_len) {
         Serial.printf("Received Gemini response: %s\n", payload.c_str());
         
         receivedMessage = payload;
+        // СОХРАНЯЕМ В ЧИСТЫЙ КОНТЕКСТ
+        lastValidGeminiContext = payload; 
+
         messageTimestamp = millis();
         paginateMessage(receivedMessage); 
         
@@ -115,6 +118,8 @@ bool sendVoiceToGemini(uint8_t* audio_buffer, size_t buffer_len) {
         Serial.printf("Error payload: %s\n", errorPayload.c_str());
 
         receivedMessage = "Gemini Error: " + String(httpResponseCode) + "\n" + errorPayload;
+        // НЕ ОБНОВЛЯЕМ lastValidGeminiContext ПРИ ОШИБКЕ
+        
         messageTimestamp = millis();
         paginateMessage(receivedMessage);
         
@@ -149,6 +154,9 @@ bool sendVoiceToGoogleSearch(uint8_t* audio_buffer, size_t buffer_len) {
         Serial.printf("Received Google Search response: %s\n", payload.c_str());
         
         receivedMessage = payload;
+        // СОХРАНЯЕМ В ЧИСТЫЙ КОНТЕКСТ
+        lastValidGeminiContext = payload; 
+
         messageTimestamp = millis();
         paginateMessage(receivedMessage); 
         
@@ -160,6 +168,8 @@ bool sendVoiceToGoogleSearch(uint8_t* audio_buffer, size_t buffer_len) {
         Serial.printf("Error payload: %s\n", errorPayload.c_str());
 
         receivedMessage = "Google Search Error: " + String(httpResponseCode) + "\n" + errorPayload;
+        // НЕ ОБНОВЛЯЕМ lastValidGeminiContext ПРИ ОШИБКЕ
+
         messageTimestamp = millis();
         paginateMessage(receivedMessage);
         
@@ -170,7 +180,7 @@ bool sendVoiceToGoogleSearch(uint8_t* audio_buffer, size_t buffer_len) {
 
 
 // --- ОТПРАВКА УТОЧНЯЮЩЕГО ВОПРОСА В GEMINI ---
-bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previous_response) {
+bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String ignored_received_message) {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi not connected. Cannot send follow-up to Gemini.");
         receivedMessage = "Error: WiFi not connected.";
@@ -179,13 +189,15 @@ bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previ
     }
 
     HTTPClient http;
-    String serverUrl = String(SERVER_ADDRESS) + "/gemini_followup"; // Новый эндпоинт
+    String serverUrl = String(SERVER_ADDRESS) + "/gemini_followup"; 
     
     Serial.printf("Sending follow-up to Gemini (%d bytes) via %s...\n", buffer_len, serverUrl.c_str());
     
     http.begin(serverUrl);
     http.addHeader("Content-Type", "audio/wav");
-    http.addHeader("X-Previous-Response", previous_response); // Отправляем контекст в заголовке
+    // ИСПОЛЬЗУЕМ ТОЛЬКО ВАЛИДНЫЙ КОНТЕКСТ, А НЕ ТЕКСТ С ЭКРАНА
+    http.addHeader("X-Previous-Response", lastValidGeminiContext); 
+    
     http.setConnectTimeout(10000);
     http.setTimeout(30000);
 
@@ -196,6 +208,9 @@ bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previ
         Serial.printf("Received Gemini follow-up response: %s\n", payload.c_str());
         
         receivedMessage = payload;
+        // ОБНОВЛЯЕМ КОНТЕКСТ УСПЕШНЫМ ОТВЕТОМ
+        lastValidGeminiContext = payload;
+
         messageTimestamp = millis();
         paginateMessage(receivedMessage); 
         
@@ -207,6 +222,8 @@ bool sendFollowUpToGemini(uint8_t* audio_buffer, size_t buffer_len, String previ
         Serial.printf("Error payload: %s\n", errorPayload.c_str());
 
         receivedMessage = "Gemini Error: " + String(httpResponseCode) + "\n" + errorPayload;
+        // НЕ ОБНОВЛЯЕМ lastValidGeminiContext ПРИ ОШИБКЕ
+
         messageTimestamp = millis();
         paginateMessage(receivedMessage);
         

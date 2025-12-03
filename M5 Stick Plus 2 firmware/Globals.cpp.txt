@@ -2,8 +2,9 @@
 #include <WebServer.h>
 
 // --- НАСТРОЙКИ ---
-const int SAMPLE_RATE = 8000;
-const int RECORD_BUFFER_SIZE = 80000;
+const int SAMPLE_RATE = 16000; // Увеличиваем качество для лучшего распознавания
+const int RECORD_BUFFER_SIZE = 85000; // Немного увеличим буфер (~2.6 сек при 16кГц 16бит, либо ~5 сек при 8кГц)
+// Примечание: При 16кГц буфер заполнится быстрее. Для длинных фраз лучше говорить быстро.
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 
@@ -21,6 +22,9 @@ size_t last_recorded_bytes = 0;
 
 // Состояние сообщений
 String receivedMessage = "";
+// НОВАЯ ПЕРЕМЕННАЯ: Хранит последний УСПЕШНЫЙ ответ от ИИ для контекста
+String lastValidGeminiContext = "Привет! Я твой ассистент."; 
+
 bool newMessageReceived = false;
 unsigned long messageTimestamp = 0;
 int currentPage = 0;

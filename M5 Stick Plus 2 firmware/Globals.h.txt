@@ -28,6 +28,8 @@ extern size_t last_recorded_bytes;
 
 // Состояние сообщений
 extern String receivedMessage;
+extern String lastValidGeminiContext; // <-- Для чистого контекста
+
 extern bool newMessageReceived;
 extern unsigned long messageTimestamp;
 extern int currentPage;

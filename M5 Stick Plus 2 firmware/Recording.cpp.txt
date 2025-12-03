@@ -4,6 +4,15 @@
 #include "Networking.h" // for send* functions
 #include "UI.h" // for displayMenu
 
+// Вспомогательная функция для настройки микрофона с высоким усилением
+void setupMicHighGain() {
+    M5.Mic.begin();
+    auto cfg = M5.Mic.config();
+    cfg.magnification = 64; // УВЕЛИЧИВАЕМ ЧУВСТВИТЕЛЬНОСТЬ (было по умолчанию ~1)
+    cfg.noise_filter_level = 0; // Отключаем агрессивный шумодав, чтобы не съедал голос
+    M5.Mic.config(cfg);
+}
+
 void handleVoiceRecording() {
     static bool isRecording = false;
     bool stopAndProcess = false;
@@ -12,7 +21,7 @@ void handleVoiceRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            M5.Mic.begin();
+            setupMicHighGain(); // Используем усиление
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запись...", 60, 60); 
             Serial.println("Recording started...");
@@ -97,7 +106,7 @@ void handleGeminiRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            M5.Mic.begin();
+            setupMicHighGain(); // Усиление
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
             Serial.println("Gemini recording started...");
@@ -185,7 +194,7 @@ void handleGoogleSearchRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            M5.Mic.begin();
+            setupMicHighGain(); // Усиление
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Google...", 40, 60);
             Serial.println("Google Search recording started...");
@@ -273,7 +282,7 @@ void handleGeminiFollowupRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            M5.Mic.begin();
+            setupMicHighGain(); // Усиление
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Слушаю вопрос...", 40, 60);
             Serial.println("Gemini follow-up recording started...");
@@ -328,7 +337,8 @@ void handleGeminiFollowupRecording() {
                     memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
                     memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
 
-                    sendFollowUpToGemini(wav_buffer, total_len, receivedMessage);
+                    // Передаем записанный голос. Внутри этой функции теперь будет использоваться lastValidGeminiContext
+                    sendFollowUpToGemini(wav_buffer, total_len, receivedMessage); 
                     free(wav_buffer);
                     
                     setMenuMode(MODE_MESSAGE_STANDBY);
