@@ -10,17 +10,18 @@ void setupMicHighGain() {
     M5.Mic.end(); // Останавливаем перед настройкой, чтобы применилось точно
     auto cfg = M5.Mic.config();
     
-    // ИСПРАВЛЕНИЕ КАЧЕСТВА ЗВУКА (ФИНАЛЬНОЕ):
-    // Если слышен "белый шум" при речи - это перегрузка (clipping).
-    // Мы снижаем усиление до минимума и отключаем фильтры.
+    // ИСПРАВЛЕНИЕ КАЧЕСТВА ЗВУКА:
+    // 1. Усиление 30 - оптимально (не клиппит, но слышно).
+    // 2. Отключаем фильтры, чтобы не было "робо-голоса".
     
-    cfg.magnification = 10;       // Снижено с 64 до 10. Убираем перегрузку.
-    cfg.noise_filter_level = 0;   // Отключаем фильтр. Он превращает перегруз в треск.
+    cfg.magnification = 30;       // Золотая середина
+    cfg.noise_filter_level = 0;   // Без фильтрации
     cfg.sample_rate = SAMPLE_RATE;// 16000Hz
-    cfg.stereo = false;           // Явно указываем моно режим
+    cfg.stereo = false;           // Моно
     
     M5.Mic.config(cfg);
     M5.Mic.begin();
+    delay(100); // Даем микрофону время на "прогрев" и выравнивание DC offset
 }
 
 void handleVoiceRecording() {
@@ -38,7 +39,8 @@ void handleVoiceRecording() {
         }
         
         if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 1024;
+            // Читаем БОЛЬШИМИ кусками (4096 байт), чтобы избежать разрывов звука
+            size_t chunk_size = 4096;
             if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
                 chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
             }
@@ -70,7 +72,7 @@ void handleVoiceRecording() {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Отправка...", 60, 60);
 
-            if (recorded_bytes > 100) {
+            if (recorded_bytes > 1000) { // Игнорируем совсем короткие записи
                 uint8_t wavHeader[44];
                 createWavHeader_manual(wavHeader, recorded_bytes);
 
@@ -99,7 +101,7 @@ void handleVoiceRecording() {
 
             } else {
                 M5.Lcd.fillScreen(TFT_ORANGE);
-                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+                M5.Lcd.drawString((const char*)u8"Слишком коротко", 20, 60);
             }
             delay(1500);
             setMenuMode(MODE_MAIN_MENU);
@@ -116,14 +118,14 @@ void handleGeminiRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон (теперь без лишнего усиления)
+            setupMicHighGain(); // Включаем микрофон
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
             Serial.println("Gemini recording started...");
         }
 
         if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 1024;
+            size_t chunk_size = 4096; // Увеличенный буфер
             if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
                 chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
             }
@@ -157,7 +159,7 @@ void handleGeminiRecording() {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Обработка...", 60, 60);
 
-            if (recorded_bytes > 100) {
+            if (recorded_bytes > 1000) {
                  // Сохраняем последнюю запись для функции "Перегенерировать"
                 memcpy(last_rec_data, rec_data, recorded_bytes);
                 last_recorded_bytes = recorded_bytes;
@@ -187,7 +189,7 @@ void handleGeminiRecording() {
                 }
             } else {
                 M5.Lcd.fillScreen(TFT_ORANGE);
-                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+                M5.Lcd.drawString((const char*)u8"Слишком коротко", 20, 60);
                 delay(1500);
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();
@@ -211,7 +213,7 @@ void handleGoogleSearchRecording() {
         }
 
         if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 1024;
+            size_t chunk_size = 4096; // Увеличенный буфер
             if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
                 chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
             }
@@ -245,7 +247,7 @@ void handleGoogleSearchRecording() {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Поиск...", 60, 60);
 
-            if (recorded_bytes > 100) {
+            if (recorded_bytes > 1000) {
                  // Сохраняем последнюю запись для функции "Перегенерировать"
                 memcpy(last_rec_data, rec_data, recorded_bytes);
                 last_recorded_bytes = recorded_bytes;
@@ -275,7 +277,7 @@ void handleGoogleSearchRecording() {
                 }
             } else {
                 M5.Lcd.fillScreen(TFT_ORANGE);
-                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+                M5.Lcd.drawString((const char*)u8"Слишком коротко", 20, 60);
                 delay(1500);
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();
@@ -299,7 +301,7 @@ void handleGeminiFollowupRecording() {
         }
 
         if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 1024;
+            size_t chunk_size = 4096; // Увеличенный буфер
             if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
                 chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
             }
@@ -333,7 +335,7 @@ void handleGeminiFollowupRecording() {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Обработка...", 60, 60);
 
-            if (recorded_bytes > 100) {
+            if (recorded_bytes > 1000) {
                 // Сохраняем последнюю запись для функции "Перегенерировать"
                 memcpy(last_rec_data, rec_data, recorded_bytes);
                 last_recorded_bytes = recorded_bytes;
@@ -365,7 +367,7 @@ void handleGeminiFollowupRecording() {
                 }
             } else {
                 M5.Lcd.fillScreen(TFT_ORANGE);
-                M5.Lcd.drawString((const char*)u8"Ничего не записано", 20, 60);
+                M5.Lcd.drawString((const char*)u8"Слишком коротко", 20, 60);
                 delay(1500);
                 setMenuMode(MODE_MAIN_MENU);
                 displayMenu();
