@@ -1,3 +1,4 @@
+
 #include "Recording.h"
 #include "Globals.h"
 #include "WavHelper.h"
@@ -9,10 +10,14 @@ void setupMicHighGain() {
     M5.Mic.end(); // Останавливаем перед настройкой, чтобы применилось точно
     auto cfg = M5.Mic.config();
     
-    // ИСПРАВЛЕНИЕ КАЧЕСТВА ЗВУКА:
-    cfg.magnification = 64;       // Было 128 (слишком громко -> шум). 64 - баланс громкости и чистоты.
-    cfg.noise_filter_level = 255; // Было 0. Включаем МАКСИМАЛЬНОЕ шумоподавление.
-    cfg.sample_rate = SAMPLE_RATE;// Синхронизируем частоту железа с частотой записи (16000)
+    // ИСПРАВЛЕНИЕ КАЧЕСТВА ЗВУКА (ФИНАЛЬНОЕ):
+    // Если слышен "белый шум" при речи - это перегрузка (clipping).
+    // Мы снижаем усиление до минимума и отключаем фильтры.
+    
+    cfg.magnification = 10;       // Снижено с 64 до 10. Убираем перегрузку.
+    cfg.noise_filter_level = 0;   // Отключаем фильтр. Он превращает перегруз в треск.
+    cfg.sample_rate = SAMPLE_RATE;// 16000Hz
+    cfg.stereo = false;           // Явно указываем моно режим
     
     M5.Mic.config(cfg);
     M5.Mic.begin();
@@ -111,7 +116,7 @@ void handleGeminiRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон с фильтром шума
+            setupMicHighGain(); // Включаем микрофон (теперь без лишнего усиления)
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
             Serial.println("Gemini recording started...");
@@ -199,7 +204,7 @@ void handleGoogleSearchRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон с фильтром шума
+            setupMicHighGain(); // Включаем микрофон
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Google...", 40, 60);
             Serial.println("Google Search recording started...");
@@ -287,7 +292,7 @@ void handleGeminiFollowupRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон с фильтром шума
+            setupMicHighGain(); // Включаем микрофон
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Слушаю вопрос...", 40, 60);
             Serial.println("Gemini follow-up recording started...");
