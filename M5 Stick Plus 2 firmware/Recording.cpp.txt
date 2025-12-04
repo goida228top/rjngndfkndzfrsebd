@@ -4,13 +4,14 @@
 #include "Networking.h" // for send* functions
 #include "UI.h" // for displayMenu
 
-// Вспомогательная функция для настройки микрофона с высоким усилением
+// Вспомогательная функция для настройки микрофона с МАКСИМАЛЬНЫМ усилением
 void setupMicHighGain() {
-    M5.Mic.begin();
+    // Сначала применяем конфиг, потом begin. Это важно для M5Unified.
     auto cfg = M5.Mic.config();
-    cfg.magnification = 64; // УВЕЛИЧИВАЕМ ЧУВСТВИТЕЛЬНОСТЬ (было по умолчанию ~1)
-    cfg.noise_filter_level = 0; // Отключаем агрессивный шумодав, чтобы не съедал голос
+    cfg.magnification = 128; // МАКСИМАЛЬНОЕ УСИЛЕНИЕ (было 64)
+    cfg.noise_filter_level = 0; // ВООБЩЕ ОТКЛЮЧАЕМ ШУМОДАВ, он съедает голос
     M5.Mic.config(cfg);
+    M5.Mic.begin();
 }
 
 void handleVoiceRecording() {
@@ -21,7 +22,7 @@ void handleVoiceRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Используем усиление
+            setupMicHighGain(); // Применяем настройки перед записью
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запись...", 60, 60); 
             Serial.println("Recording started...");
@@ -106,7 +107,7 @@ void handleGeminiRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Усиление
+            setupMicHighGain(); // МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
             Serial.println("Gemini recording started...");
@@ -194,7 +195,7 @@ void handleGoogleSearchRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Усиление
+            setupMicHighGain(); // МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Google...", 40, 60);
             Serial.println("Google Search recording started...");
@@ -249,7 +250,7 @@ void handleGoogleSearchRecording() {
                     memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
                     memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
 
-                    sendVoiceToGoogleSearch(wav_buffer, total_len); // New function call
+                    sendVoiceToGoogleSearch(wav_buffer, total_len); 
                     free(wav_buffer);
                     
                     setMenuMode(MODE_MESSAGE_STANDBY);
@@ -282,7 +283,7 @@ void handleGeminiFollowupRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Усиление
+            setupMicHighGain(); // МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Слушаю вопрос...", 40, 60);
             Serial.println("Gemini follow-up recording started...");
@@ -337,8 +338,9 @@ void handleGeminiFollowupRecording() {
                     memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
                     memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
 
-                    // Передаем записанный голос. Внутри этой функции теперь будет использоваться lastValidGeminiContext
-                    sendFollowUpToGemini(wav_buffer, total_len, receivedMessage); 
+                    // Передаем записанный голос. 
+                    // ВАЖНО: Используем lastValidGeminiContext, чтобы не отправлять ошибки в историю
+                    sendFollowUpToGemini(wav_buffer, total_len, lastValidGeminiContext); 
                     free(wav_buffer);
                     
                     setMenuMode(MODE_MESSAGE_STANDBY);
