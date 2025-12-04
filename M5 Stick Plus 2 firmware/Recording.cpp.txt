@@ -7,20 +7,59 @@
 
 // Вспомогательная функция для настройки микрофона
 void setupMicHighGain() {
-    M5.Mic.end(); // Останавливаем перед настройкой, чтобы применилось точно
+    M5.Speaker.end(); // ВАЖНО: Выключаем динамик перед использованием микрофона (общий ресурс)
+    M5.Mic.end();     // Перезагружаем микрофон
+    
     auto cfg = M5.Mic.config();
     
     // ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ НАСТРОЙКИ
     cfg.magnification = mic_gain;       
     cfg.noise_filter_level = mic_noise_level;   
     
-    cfg.sample_rate = SAMPLE_RATE;// 16000Hz
+    cfg.sample_rate = SAMPLE_RATE;
     cfg.stereo = false;           // Моно
+    // cfg.task_priority = 0;     // Можно попробовать понизить приоритет если будут разрывы
     
     M5.Mic.config(cfg);
     M5.Mic.begin();
-    delay(100); // Даем микрофону время на "прогрев" и выравнивание DC offset
+    
+    // Даем время на стабилизацию
+    delay(100); 
 }
+
+// Универсальная функция чтения, чтобы не дублировать код
+// Возвращает true, если запись идет, false если буфер полон
+bool processAudioCapture() {
+    if (recorded_bytes >= RECORD_BUFFER_SIZE) {
+        return false; // Буфер полон
+    }
+
+    // Рассчитываем, сколько БАЙТ осталось
+    size_t bytes_remaining = RECORD_BUFFER_SIZE - recorded_bytes;
+    
+    // Читаем порциями. M5.Mic.record принимает КОЛИЧЕСТВО СЭМПЛОВ.
+    // 1 сэмпл = 2 байта (16 бит).
+    // Поэтому, если мы хотим прочитать N байт, нам нужно N/2 сэмплов.
+    
+    size_t chunk_samples = 1024; // Читаем по 1024 сэмпла за раз (2048 байт)
+    size_t chunk_bytes = chunk_samples * sizeof(int16_t);
+
+    // Если места мало, читаем меньше
+    if (bytes_remaining < chunk_bytes) {
+        chunk_bytes = bytes_remaining;
+        chunk_samples = chunk_bytes / sizeof(int16_t);
+    }
+
+    if (chunk_samples > 0) {
+        // rec_data + recorded_bytes - это указатель на текущую позицию в байтовом массиве
+        if (M5.Mic.record(rec_data + recorded_bytes, chunk_samples, SAMPLE_RATE)) {
+            recorded_bytes += chunk_bytes; // ВАЖНО: Увеличиваем на количество БАЙТ, а не сэмплов
+            return true;
+        }
+    }
+    return true; // Продолжаем, даже если record вернул false (ждем данных)
+}
+
 
 void handleVoiceRecording() {
     static bool isRecording = false;
@@ -30,24 +69,14 @@ void handleVoiceRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Применяем настройки перед записью
+            setupMicHighGain(); 
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запись...", 60, 60); 
             Serial.println("Recording started...");
         }
         
-        if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            // Читаем БОЛЬШИМИ кусками (4096 байт), чтобы избежать разрывов звука
-            size_t chunk_size = 4096;
-            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
-                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
-            }
-            
-            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
-                recorded_bytes += chunk_size;
-            }
-        } else {
-             stopAndProcess = true;
+        if (!processAudioCapture()) {
+            stopAndProcess = true; // Буфер полон
         }
         
     } else if (isRecording) {
@@ -56,26 +85,26 @@ void handleVoiceRecording() {
 
     if (stopAndProcess) {
          isRecording = false;
-         M5.Mic.end();
+         M5.Mic.end(); // Выключаем микрофон
          Serial.printf("Recording stopped. Total bytes: %d\n", recorded_bytes);
 
          if (isFirstRecording) {
-             isFirstRecording = false; // Первая запись прошла
+             isFirstRecording = false; 
              M5.Lcd.fillScreen(TFT_BLUE);
              M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
-             Serial.println("First recording was for initialization. Discarding data.");
-             delay(1500);
-             displayMenu(); // Остаемся на экране записи
+             delay(1000);
+             displayMenu(); 
          } else {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Отправка...", 60, 60);
 
-            if (recorded_bytes > 1000) { // Игнорируем совсем короткие записи
+            if (recorded_bytes > 2000) { 
                 uint8_t wavHeader[44];
                 createWavHeader_manual(wavHeader, recorded_bytes);
 
                 size_t total_len = sizeof(wavHeader) + recorded_bytes;
-                uint8_t* wav_buffer = (uint8_t*)malloc(total_len);
+                uint8_t* wav_buffer = (uint8_t*)malloc(total_len); // Тут лучше использовать ps_malloc если возможно, но для отправки сойдет и так если влезет
+                
                 if (wav_buffer) {
                     memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
                     memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
@@ -92,11 +121,9 @@ void handleVoiceRecording() {
                     }
 
                 } else {
-                    Serial.println("Failed to allocate memory for WAV buffer!");
                     M5.Lcd.fillScreen(TFT_RED);
-                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                    M5.Lcd.drawString((const char*)u8"Out of Memory!", 20, 60);
                 }
-
             } else {
                 M5.Lcd.fillScreen(TFT_ORANGE);
                 M5.Lcd.drawString((const char*)u8"Слишком коротко", 20, 60);
@@ -116,22 +143,13 @@ void handleGeminiRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон
+            setupMicHighGain();
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
             Serial.println("Gemini recording started...");
         }
 
-        if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 4096; // Увеличенный буфер
-            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
-                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
-            }
-
-            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
-                recorded_bytes += chunk_size;
-            }
-        } else {
+        if (!processAudioCapture()) {
             stopAndProcess = true;
         }
 
@@ -145,22 +163,22 @@ void handleGeminiRecording() {
         Serial.printf("Gemini recording stopped. Total bytes: %d\n", recorded_bytes);
 
         if (isFirstRecording) {
-            isFirstRecording = false; // Первая запись прошла
+            isFirstRecording = false;
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
-            Serial.println("First recording was for initialization. Discarding data.");
-            delay(1500);
+            delay(1000);
             setMenuMode(MODE_GEMINI_RECORDING);
             displayMenu();
-
         } else {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Обработка...", 60, 60);
 
-            if (recorded_bytes > 1000) {
-                 // Сохраняем последнюю запись для функции "Перегенерировать"
-                memcpy(last_rec_data, rec_data, recorded_bytes);
-                last_recorded_bytes = recorded_bytes;
+            if (recorded_bytes > 2000) {
+                // Сохраняем копию
+                if (recorded_bytes < RECORD_BUFFER_SIZE) {
+                    memcpy(last_rec_data, rec_data, recorded_bytes);
+                    last_recorded_bytes = recorded_bytes;
+                }
 
                 uint8_t wavHeader[44];
                 createWavHeader_manual(wavHeader, recorded_bytes);
@@ -176,11 +194,9 @@ void handleGeminiRecording() {
                     
                     setMenuMode(MODE_MESSAGE_STANDBY);
                     displayMenu();
-
                 } else {
-                    Serial.println("Failed to allocate memory for WAV buffer!");
                     M5.Lcd.fillScreen(TFT_RED);
-                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                    M5.Lcd.drawString((const char*)u8"Out of Memory!", 20, 60);
                     delay(2000);
                     setMenuMode(MODE_MAIN_MENU);
                     displayMenu();
@@ -204,22 +220,13 @@ void handleGoogleSearchRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон
+            setupMicHighGain();
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Google...", 40, 60);
             Serial.println("Google Search recording started...");
         }
 
-        if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 4096; // Увеличенный буфер
-            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
-                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
-            }
-
-            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
-                recorded_bytes += chunk_size;
-            }
-        } else {
+        if (!processAudioCapture()) {
             stopAndProcess = true;
         }
 
@@ -233,22 +240,22 @@ void handleGoogleSearchRecording() {
         Serial.printf("Google Search recording stopped. Total bytes: %d\n", recorded_bytes);
 
         if (isFirstRecording) {
-            isFirstRecording = false; // Первая запись прошла
+            isFirstRecording = false;
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
-            Serial.println("First recording was for initialization. Discarding data.");
-            delay(1500);
-            setMenuMode(MODE_GOOGLE_SEARCH_RECORDING); // Stay in this mode
+            delay(1000);
+            setMenuMode(MODE_GOOGLE_SEARCH_RECORDING);
             displayMenu();
 
         } else {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Поиск...", 60, 60);
 
-            if (recorded_bytes > 1000) {
-                 // Сохраняем последнюю запись для функции "Перегенерировать"
-                memcpy(last_rec_data, rec_data, recorded_bytes);
-                last_recorded_bytes = recorded_bytes;
+            if (recorded_bytes > 2000) {
+                if (recorded_bytes < RECORD_BUFFER_SIZE) {
+                    memcpy(last_rec_data, rec_data, recorded_bytes);
+                    last_recorded_bytes = recorded_bytes;
+                }
 
                 uint8_t wavHeader[44];
                 createWavHeader_manual(wavHeader, recorded_bytes);
@@ -266,9 +273,8 @@ void handleGoogleSearchRecording() {
                     displayMenu();
 
                 } else {
-                    Serial.println("Failed to allocate memory for WAV buffer!");
                     M5.Lcd.fillScreen(TFT_RED);
-                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                    M5.Lcd.drawString((const char*)u8"Out of Memory!", 20, 60);
                     delay(2000);
                     setMenuMode(MODE_MAIN_MENU);
                     displayMenu();
@@ -292,22 +298,13 @@ void handleGeminiFollowupRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // Включаем микрофон
+            setupMicHighGain();
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Слушаю вопрос...", 40, 60);
             Serial.println("Gemini follow-up recording started...");
         }
 
-        if (recorded_bytes < RECORD_BUFFER_SIZE) {
-            size_t chunk_size = 4096; // Увеличенный буфер
-            if (recorded_bytes + chunk_size > RECORD_BUFFER_SIZE) {
-                chunk_size = RECORD_BUFFER_SIZE - recorded_bytes;
-            }
-
-            if (M5.Mic.record(rec_data + recorded_bytes, chunk_size, SAMPLE_RATE)) {
-                recorded_bytes += chunk_size;
-            }
-        } else {
+        if (!processAudioCapture()) {
             stopAndProcess = true;
         }
 
@@ -321,11 +318,10 @@ void handleGeminiFollowupRecording() {
         Serial.printf("Gemini follow-up recording stopped. Total bytes: %d\n", recorded_bytes);
 
         if (isFirstRecording) {
-            isFirstRecording = false; // Первая запись прошла
+            isFirstRecording = false;
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Инициализация...", 20, 60);
-            Serial.println("First recording was for initialization. Discarding data.");
-            delay(1500);
+            delay(1000);
             setMenuMode(MODE_GEMINI_FOLLOWUP_RECORDING);
             displayMenu();
 
@@ -333,10 +329,11 @@ void handleGeminiFollowupRecording() {
             M5.Lcd.fillScreen(TFT_BLUE);
             M5.Lcd.drawString((const char*)u8"Обработка...", 60, 60);
 
-            if (recorded_bytes > 1000) {
-                // Сохраняем последнюю запись для функции "Перегенерировать"
-                memcpy(last_rec_data, rec_data, recorded_bytes);
-                last_recorded_bytes = recorded_bytes;
+            if (recorded_bytes > 2000) {
+                 if (recorded_bytes < RECORD_BUFFER_SIZE) {
+                    memcpy(last_rec_data, rec_data, recorded_bytes);
+                    last_recorded_bytes = recorded_bytes;
+                }
 
                 uint8_t wavHeader[44];
                 createWavHeader_manual(wavHeader, recorded_bytes);
@@ -347,18 +344,14 @@ void handleGeminiFollowupRecording() {
                     memcpy(wav_buffer, wavHeader, sizeof(wavHeader));
                     memcpy(wav_buffer + sizeof(wavHeader), rec_data, recorded_bytes);
 
-                    // Передаем записанный голос. 
-                    // ВАЖНО: Используем lastValidGeminiContext, чтобы не отправлять ошибки в историю
                     sendFollowUpToGemini(wav_buffer, total_len, lastValidGeminiContext); 
                     free(wav_buffer);
                     
                     setMenuMode(MODE_MESSAGE_STANDBY);
                     displayMenu();
-
                 } else {
-                    Serial.println("Failed to allocate memory for WAV buffer!");
                     M5.Lcd.fillScreen(TFT_RED);
-                    M5.Lcd.drawString((const char*)u8"Ошибка памяти!", 20, 60);
+                    M5.Lcd.drawString((const char*)u8"Out of Memory!", 20, 60);
                     delay(2000);
                     setMenuMode(MODE_MAIN_MENU);
                     displayMenu();

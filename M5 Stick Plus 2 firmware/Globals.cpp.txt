@@ -3,14 +3,14 @@
 #include <WebServer.h>
 
 // --- НАСТРОЙКИ ---
-const int SAMPLE_RATE = 16000; // 16kHz для лучшего качества речи
-const int RECORD_BUFFER_SIZE = 85000; 
+const int SAMPLE_RATE = 16000; // 16kHz - стандарт для API распознавания
+const int RECORD_BUFFER_SIZE = 160000; // ~10 секунд записи (16000 * 2 байта * 5 сек = 160000)
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 
 // Настройки микрофона (по умолчанию)
-int mic_gain = 40;       // Среднее значение
-int mic_noise_level = 0; // Выключено по умолчанию
+int mic_gain = 20;       // Ставим поменьше, чтобы не клипповало
+int mic_noise_level = 0; // Шумодав выкл по умолчанию
 int micSettingsSelection = 0;
 
 // Состояние системы
@@ -55,8 +55,8 @@ void setMenuMode(Mode newMode) {
 
 void loadMicSettings() {
     preferences.begin("mic-settings", true); // Read-only
-    mic_gain = preferences.getInt("gain", 40); // Дефолт 40
-    mic_noise_level = preferences.getInt("noise", 0); // Дефолт 0
+    mic_gain = preferences.getInt("gain", 20); 
+    mic_noise_level = preferences.getInt("noise", 0); 
     preferences.end();
 }
 

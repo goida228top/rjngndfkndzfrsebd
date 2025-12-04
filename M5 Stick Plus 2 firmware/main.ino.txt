@@ -19,8 +19,11 @@ void setup() {
 
     WiFi.setAutoReconnect(true);
 
-    rec_data = (uint8_t*)malloc(RECORD_BUFFER_SIZE);
-    last_rec_data = (uint8_t*)malloc(RECORD_BUFFER_SIZE);
+    // Используем MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM для выделения памяти в PSRAM если есть, или в RAM
+    // Это критично для больших буферов аудио
+    rec_data = (uint8_t*)heap_caps_malloc(RECORD_BUFFER_SIZE, MALLOC_CAP_8BIT);
+    last_rec_data = (uint8_t*)heap_caps_malloc(RECORD_BUFFER_SIZE, MALLOC_CAP_8BIT);
+
     if (!rec_data || !last_rec_data) {
         Serial.println("Failed to allocate memory for recording buffer!");
         M5.Lcd.fillScreen(TFT_RED);
@@ -33,8 +36,9 @@ void setup() {
 
     loadAndConnectWiFi();
     
+    // Инициализация микрофона (краткая)
+    M5.Speaker.end(); // Выключаем динамик, т.к. они делят ресурсы
     M5.Mic.begin();
-    M5.Mic.end();
 
     if (M5.Imu.begin()) {
         Serial.println("IMU initialized successfully.");
@@ -93,7 +97,7 @@ void loop() {
                         clockRotation = 3; // Перевернутый ландшафтный режим (на 180 градусов)
                     }
                 }
-                // --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+                // --- КОНЕЦ НОВАЙ ЛОГИКИ ---
 
                 if (millis() - lastClockUpdateTime >= 1000) { 
                     displayMenu();
