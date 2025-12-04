@@ -4,12 +4,16 @@
 #include "Networking.h" // for send* functions
 #include "UI.h" // for displayMenu
 
-// Вспомогательная функция для настройки микрофона с МАКСИМАЛЬНЫМ усилением
+// Вспомогательная функция для настройки микрофона
 void setupMicHighGain() {
-    // Сначала применяем конфиг, потом begin. Это важно для M5Unified.
+    M5.Mic.end(); // Останавливаем перед настройкой, чтобы применилось точно
     auto cfg = M5.Mic.config();
-    cfg.magnification = 128; // МАКСИМАЛЬНОЕ УСИЛЕНИЕ (было 64)
-    cfg.noise_filter_level = 0; // ВООБЩЕ ОТКЛЮЧАЕМ ШУМОДАВ, он съедает голос
+    
+    // ИСПРАВЛЕНИЕ КАЧЕСТВА ЗВУКА:
+    cfg.magnification = 64;       // Было 128 (слишком громко -> шум). 64 - баланс громкости и чистоты.
+    cfg.noise_filter_level = 255; // Было 0. Включаем МАКСИМАЛЬНОЕ шумоподавление.
+    cfg.sample_rate = SAMPLE_RATE;// Синхронизируем частоту железа с частотой записи (16000)
+    
     M5.Mic.config(cfg);
     M5.Mic.begin();
 }
@@ -107,7 +111,7 @@ void handleGeminiRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ
+            setupMicHighGain(); // Включаем микрофон с фильтром шума
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Gemini...", 40, 60);
             Serial.println("Gemini recording started...");
@@ -195,7 +199,7 @@ void handleGoogleSearchRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ
+            setupMicHighGain(); // Включаем микрофон с фильтром шума
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Запрос Google...", 40, 60);
             Serial.println("Google Search recording started...");
@@ -283,7 +287,7 @@ void handleGeminiFollowupRecording() {
         if (!isRecording) {
             isRecording = true;
             recorded_bytes = 0;
-            setupMicHighGain(); // МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ
+            setupMicHighGain(); // Включаем микрофон с фильтром шума
             M5.Lcd.fillScreen(TFT_RED);
             M5.Lcd.drawString((const char*)u8"Слушаю вопрос...", 40, 60);
             Serial.println("Gemini follow-up recording started...");
