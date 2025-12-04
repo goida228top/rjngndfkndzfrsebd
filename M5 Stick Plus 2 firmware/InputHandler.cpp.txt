@@ -1,9 +1,10 @@
+
 #include "InputHandler.h"
 #include "Globals.h"
 #include "UI.h"
-#include "Networking.h" // for start/stop gyro/config
+#include "Networking.h" 
 #include "WavHelper.h"
-#include "VoiceToBuzzer.h" // Для нового режима
+#include "VoiceToBuzzer.h" 
 
 void handleInput() {
     // --- ОБРАБОТКА ВВОДА В ЗАВИСИМОСТИ ОТ РЕЖИМА ---
@@ -39,21 +40,44 @@ void handleInput() {
                         setMenuMode(MODE_MESSAGE_STANDBY);
                         displayMenu();
                         break;
-                    case 5: // Гироскоп
+                    case 5: // Микрофон (Настройки) - НОВОЕ
+                        setMenuMode(MODE_MIC_SETTINGS);
+                        micSettingsSelection = 0;
+                        displayMenu();
+                        break;
+                    case 6: // Гироскоп
                         setMenuMode(MODE_GYROSCOPE);
                         startGyroServer();
                         displayMenu();
                         break;
-                    case 6: // Зумер
+                    case 7: // Зумер
                         setMenuMode(MODE_BUZZER);
                         displayMenu();
                         break;
-                    case 7: // Диагностика
+                    case 8: // Диагностика
                         setMenuMode(MODE_DIAGNOSTICS);
                         displayMenu();
                         runNetworkDiagnostics();
                         break; 
-                    case 8: M5.Power.powerOff(); break; // Выключение
+                    case 9: M5.Power.powerOff(); break; // Выключение (индекс сместился)
+                }
+                break;
+            case MODE_MIC_SETTINGS: // --- ЛОГИКА НАСТРОЙКИ МИКРОФОНА ---
+                if (micSettingsSelection == 0) {
+                    // Усиление + 10, цикл 0-120
+                    mic_gain = (mic_gain + 10);
+                    if (mic_gain > 120) mic_gain = 0;
+                    displayMenu();
+                } else if (micSettingsSelection == 1) {
+                    // Шумодав + 64, цикл 0-255
+                    mic_noise_level = (mic_noise_level + 64);
+                    if (mic_noise_level > 255) mic_noise_level = 0;
+                    displayMenu();
+                } else if (micSettingsSelection == 2) {
+                    // Выход
+                    saveMicSettings(); // Сохраняем в память
+                    setMenuMode(MODE_MAIN_MENU);
+                    displayMenu();
                 }
                 break;
             case MODE_WIFI_MENU:
@@ -133,6 +157,10 @@ void handleInput() {
         switch (menuMode) {
             case MODE_MAIN_MENU:
                 selectedItem = (selectedItem - 1 + numMainMenu) % numMainMenu;
+                displayMenu();
+                break;
+            case MODE_MIC_SETTINGS: // Навигация по меню микрофона
+                micSettingsSelection = (micSettingsSelection + 1) % 3; // 3 пункта
                 displayMenu();
                 break;
             case MODE_WIFI_MENU:

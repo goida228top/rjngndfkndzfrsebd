@@ -10,12 +10,10 @@ void setupMicHighGain() {
     M5.Mic.end(); // Останавливаем перед настройкой, чтобы применилось точно
     auto cfg = M5.Mic.config();
     
-    // ИСПРАВЛЕНИЕ КАЧЕСТВА ЗВУКА:
-    // 1. Усиление 30 - оптимально (не клиппит, но слышно).
-    // 2. Отключаем фильтры, чтобы не было "робо-голоса".
+    // ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ НАСТРОЙКИ
+    cfg.magnification = mic_gain;       
+    cfg.noise_filter_level = mic_noise_level;   
     
-    cfg.magnification = 30;       // Золотая середина
-    cfg.noise_filter_level = 0;   // Без фильтрации
     cfg.sample_rate = SAMPLE_RATE;// 16000Hz
     cfg.stereo = false;           // Моно
     

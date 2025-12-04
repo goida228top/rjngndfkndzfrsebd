@@ -1,3 +1,4 @@
+
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
@@ -14,6 +15,11 @@ extern const int RECORD_BUFFER_SIZE;
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 
+// Настройки микрофона
+extern int mic_gain;
+extern int mic_noise_level;
+extern int micSettingsSelection;
+
 // Состояние системы
 extern Mode menuMode;
 extern int selectedItem;
@@ -28,7 +34,7 @@ extern size_t last_recorded_bytes;
 
 // Состояние сообщений
 extern String receivedMessage;
-extern String lastValidGeminiContext; // <-- НОВАЯ ПЕРЕМЕННАЯ: Хранит только чистый диалог
+extern String lastValidGeminiContext;
 
 extern bool newMessageReceived;
 extern unsigned long messageTimestamp;
@@ -52,6 +58,8 @@ extern WebServer server;
 
 // Функции
 void setMenuMode(Mode newMode);
+void loadMicSettings();
+void saveMicSettings();
 
 
 #endif // GLOBALS_H

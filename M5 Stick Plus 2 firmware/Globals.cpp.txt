@@ -1,3 +1,4 @@
+
 #include "Globals.h"
 #include <WebServer.h>
 
@@ -6,6 +7,11 @@ const int SAMPLE_RATE = 16000; // 16kHz для лучшего качества �
 const int RECORD_BUFFER_SIZE = 85000; 
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+
+// Настройки микрофона (по умолчанию)
+int mic_gain = 40;       // Среднее значение
+int mic_noise_level = 0; // Выключено по умолчанию
+int micSettingsSelection = 0;
 
 // Состояние системы
 Mode menuMode;
@@ -45,4 +51,18 @@ WebServer server(80);
 
 void setMenuMode(Mode newMode) {
     menuMode = newMode;
+}
+
+void loadMicSettings() {
+    preferences.begin("mic-settings", true); // Read-only
+    mic_gain = preferences.getInt("gain", 40); // Дефолт 40
+    mic_noise_level = preferences.getInt("noise", 0); // Дефолт 0
+    preferences.end();
+}
+
+void saveMicSettings() {
+    preferences.begin("mic-settings", false); // RW
+    preferences.putInt("gain", mic_gain);
+    preferences.putInt("noise", mic_noise_level);
+    preferences.end();
 }

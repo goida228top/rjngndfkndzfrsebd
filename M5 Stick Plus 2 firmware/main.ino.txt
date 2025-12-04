@@ -1,3 +1,4 @@
+
 #include <M5StickCPlus2.h>
 #include <WiFi.h>
 #include "Types.h"
@@ -26,6 +27,9 @@ void setup() {
         M5.Lcd.drawString("Memory Error!", 20, 60);
         while(1);
     }
+    
+    // Загрузка сохраненных настроек
+    loadMicSettings();
 
     loadAndConnectWiFi();
     

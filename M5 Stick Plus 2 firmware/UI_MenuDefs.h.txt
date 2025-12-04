@@ -1,3 +1,4 @@
+
 #ifndef UI_MENU_DEFS_H
 #define UI_MENU_DEFS_H
 
@@ -8,6 +9,7 @@ const char* mainMenu[] = {
     (const char*)u8"Google Поиск",
     (const char*)u8"Голосовые С",
     (const char*)u8"Сообщения", 
+    (const char*)u8"Микрофон (Настр)", // Index 5
     (const char*)u8"Гироскоп",
     (const char*)u8"Зумер",
     (const char*)u8"Диагностика", 

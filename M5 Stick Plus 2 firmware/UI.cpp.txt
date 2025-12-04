@@ -1,10 +1,11 @@
+
 #include "UI.h"
 #include "Networking.h"
 #include "Globals.h"
 #include "UI_MenuDefs.h"
-#include "VoiceToBuzzer.h" // Для доступа к состоянию зуммера
-#include <time.h> // Для часов
-#include <WiFi.h> // Для WiFi.localIP()
+#include "VoiceToBuzzer.h" 
+#include <time.h> 
+#include <WiFi.h> 
 
 // --- КОНСТАНТЫ ---
 const int SCROLL_SPEED = 5;
@@ -18,7 +19,7 @@ void resetUIState() {
     selectedItem = 0;
     messageMenuSelection = 0;
     isClockDarkTheme = false;
-    clockRotation = 1; // Сброс ориентации часов при выходе из режима
+    clockRotation = 1; 
 }
 
 // УПРОЩЕННАЯ ФУНКЦИЯ ДЛЯ ОТРИСОВКИ СТАТУС-БАРА
@@ -31,7 +32,7 @@ void drawStatusBar() {
 
     // --- Отображение времени слева ---
     struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 10)) { // 10ms таймаут, не блокирующий
+    if (getLocalTime(&timeinfo, 10)) { // 10ms таймаут
         char timeStr[6];
         strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
         M5.Lcd.setTextDatum(ML_DATUM);
@@ -93,10 +94,8 @@ void drawMainMenu(const char* menuItems[], int itemCount, int yOffset = 30) {
     int y = yOffset;
     int lineHeight = 18; // Уменьшим, чтобы влезло
 
-    // --- ИСПРАВЛЕНИЕ: МЕНЮ СДВИНУЛОСЬ ИЗ-ЗА НОВОГО ПУНКТА ---
-    // Сделаем более динамический расчет
     int totalMenuHeight = itemCount * lineHeight;
-    y = (M5.Lcd.height() - totalMenuHeight) / 2 + 10; // Центрируем по вертикали со смещением от статус-бара
+    y = (M5.Lcd.height() - totalMenuHeight) / 2 + 10; 
 
     for (int i = 0; i < itemCount; i++) {
         if (i == selectedItem) {
@@ -122,7 +121,7 @@ void drawWifiConfigScreen() {
     drawStatusBar();
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.setFont(&fonts::efontCN_12);
-    M5.Lcd.setRotation(1); // Set landscape for more space
+    M5.Lcd.setRotation(1); 
     
     M5.Lcd.setTextDatum(MC_DATUM);
     M5.Lcd.drawString((const char*)u8"Настройка Wi-Fi", M5.Lcd.width() / 2, 20);
@@ -386,7 +385,7 @@ void drawGyroscopeScreen() {
 }
 
 void drawStealthClock() {
-    M5.Lcd.setRotation(clockRotation); // Используем динамическую переменную для ориентации
+    M5.Lcd.setRotation(clockRotation);
 
     if (isClockDarkTheme) {
         M5.Lcd.fillScreen(TFT_BLACK);
@@ -397,7 +396,6 @@ void drawStealthClock() {
     }
 
     struct tm timeinfo;
-    // Проверяем, что время синхронизировано (год > 2023)
     if(!getLocalTime(&timeinfo, 10) || timeinfo.tm_year < 123){
         M5.Lcd.setFont(&fonts::Font2);
         M5.Lcd.setTextDatum(MC_DATUM);
@@ -411,6 +409,44 @@ void drawStealthClock() {
     M5.Lcd.setTextFont(7);
     M5.Lcd.setTextDatum(MC_DATUM);
     M5.Lcd.drawString(timeString, M5.Lcd.width() / 2, M5.Lcd.height() / 2);
+
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+// --- НОВАЯ ФУНКЦИЯ ДЛЯ МЕНЮ НАСТРОЕК МИКРОФОНА ---
+void drawMicSettingsMenu() {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    drawStatusBar();
+    M5.Lcd.setRotation(0);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setFont(&fonts::efontCN_12);
+    
+    M5.Lcd.setTextDatum(MC_DATUM);
+    M5.Lcd.drawString((const char*)u8"Настройки Микрофона", M5.Lcd.width() / 2, 35);
+    M5.Lcd.drawLine(10, 50, M5.Lcd.width() - 10, 50, TFT_DARKGREY);
+
+    int startY = 70;
+    int spacing = 40;
+
+    // Пункт 1: Усиление (Gain)
+    if (micSettingsSelection == 0) M5.Lcd.setTextColor(TFT_YELLOW); else M5.Lcd.setTextColor(TFT_WHITE);
+    String gainStr = (const char*)u8"Усиление: " + String(mic_gain);
+    M5.Lcd.drawString(gainStr, M5.Lcd.width() / 2, startY);
+    if (micSettingsSelection == 0) M5.Lcd.drawString("< A: Изменить >", M5.Lcd.width()/2, startY + 15);
+
+    // Пункт 2: Шумодав (Noise)
+    if (micSettingsSelection == 1) M5.Lcd.setTextColor(TFT_YELLOW); else M5.Lcd.setTextColor(TFT_WHITE);
+    String noiseStr = (const char*)u8"Шумодав: " + String(mic_noise_level);
+    M5.Lcd.drawString(noiseStr, M5.Lcd.width() / 2, startY + spacing);
+    if (micSettingsSelection == 1) M5.Lcd.drawString("< A: Изменить >", M5.Lcd.width()/2, startY + spacing + 15);
+
+    // Пункт 3: Выход
+    if (micSettingsSelection == 2) M5.Lcd.setTextColor(TFT_YELLOW); else M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.drawString((const char*)u8"Сохранить и Выйти", M5.Lcd.width() / 2, startY + spacing * 2 + 10);
+    
+    // Инструкция
+    M5.Lcd.setTextColor(TFT_DARKGREY);
+    M5.Lcd.drawString((const char*)u8"Кн. B: Выбор", M5.Lcd.width()/2, M5.Lcd.height() - 20);
 
     M5.Lcd.setTextDatum(TL_DATUM);
 }
@@ -507,6 +543,9 @@ void displayMenu() {
     case MODE_STEALTH_CLOCK:
         drawStealthClock();
         break;
+    case MODE_MIC_SETTINGS: // <-- Отрисовка меню микрофона
+        drawMicSettingsMenu();
+        break;
     case MODE_BUZZER:
     {
         M5.Lcd.setRotation(0);
@@ -515,7 +554,6 @@ void displayMenu() {
         M5.Lcd.setTextColor(TFT_WHITE);
         M5.Lcd.setFont(&fonts::efontCN_12);
         
-        // Отображение текущих значений
         char buffer[32];
         sprintf(buffer, "Частота: %d Hz", buzzer_frequency);
         M5.Lcd.setTextDatum(MC_DATUM);
@@ -523,7 +561,6 @@ void displayMenu() {
         sprintf(buffer, "Громкость: %d %%", buzzer_volume);
         M5.Lcd.drawString(buffer, M5.Lcd.width() / 2, 55);
 
-        // Отрисовка кнопок
         const char* labels[] = {(const char*)u8"Ч-", (const char*)u8"Ч+", (const char*)u8"Г-", (const char*)u8"Г+", (const char*)u8"Играть", (const char*)u8"Выход"};
         int btn_w = 80;
         int btn_h = 30;
@@ -541,13 +578,11 @@ void displayMenu() {
             uint16_t bg_color = TFT_DARKGREY;
             const char* label = labels[i];
 
-            // Особый случай для кнопки Играть/Стоп
             if (i == 4 && buzzer_is_playing) {
                 label = (const char*)u8"Стоп";
                 bg_color = TFT_RED;
             }
 
-            // Подсветка выбранной кнопки
             if (i == buzzer_selected_button) {
                 M5.Lcd.drawRect(x - 2, y - 2, btn_w + 4, btn_h + 4, TFT_YELLOW);
             }
